@@ -1,4 +1,5 @@
 -- KAN-14: Alta manual del rol Municipio (no disponible en registro público).
+-- Ejecutar en el SQL Editor de Supabase.
 -- Reemplaza el hash con uno generado por: npm run db:seed-municipio
 -- Ejemplo (password: Municipio2026!):
 

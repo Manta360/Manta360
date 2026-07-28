@@ -3,9 +3,11 @@ generator client {
 }
 
 datasource db {
-  // Local: SQLite. Producción / equipo: postgresql + docker-compose.yml
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  // Supabase Postgres. DATABASE_URL usa el pooler (6543);
+  // DIRECT_URL apunta al puerto 5432 para migraciones y db push.
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
