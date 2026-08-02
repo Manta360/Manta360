@@ -1,6 +1,6 @@
 -- KAN-14: Alta manual del rol Municipio (no disponible en registro público).
 -- Ejecutar en el SQL Editor de Supabase.
--- Reemplaza el hash con uno generado por: npm run db:seed-municipio
+-- Sustituye el hash por el valor producido al ejecutar: npm run db:seed-municipio
 -- Ejemplo (password: Municipio2026!):
 
 INSERT INTO users (id, email, "passwordHash", "fullName", phone, role, active, "createdAt", "updatedAt")
