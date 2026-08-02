@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
+import type { CSSProperties } from "react";
 import "./globals.css";
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  variable: "--font-manrope",
-});
-
-const fraunces = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-fraunces",
-});
+const fontFallbacks = {
+  "--font-manrope": "Arial, Helvetica, sans-serif",
+  "--font-fraunces": "Georgia, 'Times New Roman', serif",
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: "Manta360",
@@ -25,7 +20,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${manrope.variable} ${fraunces.variable} antialiased`}>
+      <body className="antialiased" style={fontFallbacks}>
         {children}
       </body>
     </html>

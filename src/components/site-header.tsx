@@ -7,38 +7,27 @@ export async function SiteHeader() {
   const session = await getSession();
 
   return (
-    <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-6">
-      <Link href="/" className="font-[family-name:var(--font-fraunces)] text-2xl tracking-tight">
-        Manta360
-      </Link>
-      <nav className="flex items-center gap-4 text-sm text-sand/90">
-        {session ? (
-          <>
-            <span className="hidden sm:inline">
-              {session.fullName} · {ROLE_LABELS[session.role]}
-            </span>
-            <Link
-              href={ROLE_HOME[session.role]}
-              className="rounded-full border border-[var(--line)] px-4 py-2 transition hover:bg-white/5"
-            >
-              Mi panel
-            </Link>
-            <LogoutButton />
-          </>
-        ) : (
-          <>
-            <Link href="/login" className="transition hover:text-white">
-              Iniciar sesión
-            </Link>
-            <Link
-              href="/registro"
-              className="rounded-full bg-sea px-4 py-2 font-medium text-foam transition hover:bg-sea-deep"
-            >
-              Registrarse
-            </Link>
-          </>
-        )}
-      </nav>
+    <header className="border-b border-slate-200 bg-white/95 backdrop-blur">
+      <div className="mx-auto flex h-[76px] w-full max-w-6xl items-center justify-between px-5 sm:px-8">
+        <Link href="/" className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-navy text-lg font-black text-white shadow-sm">M</span>
+          <span className="text-xl font-black tracking-tight text-navy">Manta<span className="text-sky">360</span></span>
+        </Link>
+        <nav className="flex items-center gap-3 text-sm font-semibold text-slate-600">
+          {session ? (
+            <>
+              <span className="hidden lg:inline text-slate-500">{session.fullName} · {ROLE_LABELS[session.role]}</span>
+              <Link href={ROLE_HOME[session.role]} className="rounded-full border border-blue px-4 py-2 text-blue transition hover:bg-blue hover:text-white">Mi panel</Link>
+              <LogoutButton />
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="hidden sm:inline transition hover:text-blue">Iniciar sesión</Link>
+              <Link href="/registro" className="rounded-full bg-orange px-4 py-2.5 text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#d85c13]">Crear cuenta</Link>
+            </>
+          )}
+        </nav>
+      </div>
     </header>
   );
 }

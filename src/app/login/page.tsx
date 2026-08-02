@@ -3,35 +3,4 @@ import { Suspense } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { LoginForm } from "@/components/login-form";
 
-export default function LoginPage() {
-  return (
-    <div className="min-h-screen">
-      <SiteHeader />
-      <main className="mx-auto grid w-full max-w-5xl gap-10 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="space-y-4">
-          <p className="font-[family-name:var(--font-fraunces)] text-4xl tracking-tight">
-            Iniciar sesión
-          </p>
-          <p className="max-w-md text-sand/75">
-            Entra con tu correo y contraseña. Te llevamos al panel de tu rol y
-            bloqueamos rutas que no te corresponden.
-          </p>
-        </section>
-        <section className="rounded-3xl border border-[var(--line)] bg-[#122029]/70 p-6 shadow-2xl shadow-black/20 backdrop-blur">
-          <Suspense fallback={<p className="text-sand/70">Cargando...</p>}>
-            <LoginForm />
-          </Suspense>
-          <p className="mt-5 text-sm text-sand/65">
-            ¿Nuevo en Manta360?{" "}
-            <Link
-              href="/registro"
-              className="text-sea underline-offset-2 hover:underline"
-            >
-              Regístrate
-            </Link>
-          </p>
-        </section>
-      </main>
-    </div>
-  );
-}
+export default function LoginPage() { return <div className="min-h-screen bg-[#f8fafc]"><SiteHeader /><main className="mx-auto grid w-full max-w-6xl items-center gap-12 px-5 py-12 sm:px-8 lg:min-h-[calc(100vh-76px)] lg:grid-cols-[1fr_440px]"><section><p className="font-bold uppercase tracking-[.2em] text-sky">Bienvenido de vuelta</p><h1 className="mt-4 max-w-xl text-5xl font-black leading-tight tracking-tight text-navy sm:text-6xl">Tu ciudad.<br /><span className="text-blue">Tu espacio.</span></h1><p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">Ingresa a Manta360 y continúa gestionando tu experiencia habitacional en Manta.</p><div className="mt-8 h-1 w-20 rounded-full bg-orange" /></section><section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-xl shadow-navy/10 sm:p-9"><div className="mb-7"><h2 className="text-2xl font-black text-navy">Iniciar sesión</h2><p className="mt-2 text-sm text-slate-500">Accede con tus credenciales.</p></div><Suspense fallback={<p className="text-slate-500">Cargando...</p>}><LoginForm /></Suspense><p className="mt-6 text-center text-sm text-slate-500">¿Nuevo en Manta360? <Link href="/registro" className="font-bold text-blue hover:text-orange">Crea tu cuenta</Link></p></section></main></div>; }

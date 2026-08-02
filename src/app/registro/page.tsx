@@ -2,30 +2,4 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { RegisterForm } from "@/components/register-form";
 
-export default function RegisterPage() {
-  return (
-    <div className="min-h-screen">
-      <SiteHeader />
-      <main className="mx-auto grid w-full max-w-5xl gap-10 px-6 py-10 lg:grid-cols-[1.1fr_0.9fr]">
-        <section className="space-y-4">
-          <p className="font-[family-name:var(--font-fraunces)] text-4xl tracking-tight">
-            Registro
-          </p>
-          <p className="max-w-md text-sand/75">
-            Crea tu cuenta como Arrendador o Arrendatario. El acceso municipal se
-            provisiona solo por base de datos.
-          </p>
-        </section>
-        <section className="rounded-3xl border border-[var(--line)] bg-[#122029]/70 p-6 shadow-2xl shadow-black/20 backdrop-blur">
-          <RegisterForm />
-          <p className="mt-5 text-sm text-sand/65">
-            ¿Ya tienes cuenta?{" "}
-            <Link href="/login" className="text-sea underline-offset-2 hover:underline">
-              Inicia sesión
-            </Link>
-          </p>
-        </section>
-      </main>
-    </div>
-  );
-}
+export default function RegisterPage() { return <div className="min-h-screen bg-[#f8fafc]"><SiteHeader /><main className="mx-auto grid w-full max-w-6xl items-start gap-12 px-5 py-12 sm:px-8 lg:grid-cols-[1fr_520px]"><section className="pt-8"><p className="font-bold uppercase tracking-[.2em] text-orange">Únete a la comunidad</p><h1 className="mt-4 max-w-xl text-5xl font-black leading-tight tracking-tight text-navy sm:text-6xl">Construyamos<br /><span className="text-violet">Manta juntos.</span></h1><p className="mt-6 max-w-lg text-lg leading-8 text-slate-600">Crea tu cuenta como Arrendador o Arrendatario y forma parte de la plataforma habitacional oficial.</p><div className="mt-8 h-1 w-20 rounded-full bg-violet" /></section><section className="rounded-3xl border border-slate-200 bg-white p-7 shadow-xl shadow-navy/10 sm:p-9"><div className="mb-7"><h2 className="text-2xl font-black text-navy">Crear una cuenta</h2><p className="mt-2 text-sm text-slate-500">Tus datos estarán protegidos y seguros.</p></div><RegisterForm /><p className="mt-6 text-center text-sm text-slate-500">¿Ya tienes cuenta? <Link href="/login" className="font-bold text-blue hover:text-orange">Inicia sesión</Link></p></section></main></div>; }

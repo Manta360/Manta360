@@ -13,21 +13,21 @@ export default async function PanelLayout({
   if (!session) redirect("/login");
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[#f8fafc]">
       <SiteHeader />
-      <main className="mx-auto w-full max-w-5xl px-6 py-8">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-6">
+      <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8">
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4 border-b border-slate-200 pb-6">
           <div>
-            <p className="text-sm uppercase tracking-[0.18em] text-sand/55">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-sky">
               Panel {ROLE_LABELS[session.role]}
             </p>
-            <h1 className="mt-2 font-[family-name:var(--font-fraunces)] text-3xl">
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-navy">
               Hola, {session.fullName}
             </h1>
           </div>
           <Link
             href={ROLE_HOME[session.role]}
-            className="text-sm text-sea hover:underline"
+            className="text-sm font-semibold text-blue hover:underline"
           >
             {session.email}
           </Link>
