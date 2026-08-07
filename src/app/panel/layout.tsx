@@ -25,12 +25,10 @@ export default async function PanelLayout({
               Hola, {session.fullName}
             </h1>
           </div>
-          <Link
-            href={ROLE_HOME[session.role]}
-            className="text-sm font-semibold text-blue hover:underline"
-          >
-            {session.email}
-          </Link>
+          <div className="flex flex-wrap items-center gap-4 text-sm font-semibold">
+            {session.role !== "MUNICIPIO" ? <Link href="/panel/documentos" className="text-violet hover:underline">Mis documentos</Link> : null}
+            <Link href={ROLE_HOME[session.role]} className="text-blue hover:underline">{session.email}</Link>
+          </div>
         </div>
         {children}
       </main>

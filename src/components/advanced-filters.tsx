@@ -13,7 +13,7 @@ type AdvancedFiltersProps = {
   onApply?: (filters: PropertyFilters) => void;
 };
 
-const serviceOptions = ["Agua", "Luz", "Internet", "Piscina", "Seguridad"];
+const serviceOptions = ["Agua", "Luz", "Internet", "Piscina", "Seguridad Privada", "Wi-Fi", "Parqueo"];
 
 export function AdvancedFilters({ onApply }: AdvancedFiltersProps) {
   const [minPrice, setMinPrice] = useState("");
@@ -28,7 +28,6 @@ export function AdvancedFilters({ onApply }: AdvancedFiltersProps) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const filters = { minPrice, maxPrice, services, radius };
-    console.log("Simulando consulta PostGIS con los siguientes filtros:", filters);
     onApply?.(filters);
   }
 

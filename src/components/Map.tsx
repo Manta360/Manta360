@@ -6,7 +6,7 @@ import { divIcon, type LatLngExpression } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 export type MapProperty = {
-  id: number;
+  id: string;
   title: string;
   sector: string;
   price: number;
@@ -16,7 +16,7 @@ export type MapProperty = {
 
 type MapProps = {
   properties?: MapProperty[];
-  selectedId?: number | null;
+  selectedId?: string | null;
   onSelect?: (property: MapProperty) => void;
 };
 
