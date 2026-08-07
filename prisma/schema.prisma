@@ -3,11 +3,218 @@ generator client {
 }
 
 datasource db {
-  // Supabase Postgres. DATABASE_URL usa el pooler (6543);
-  // DIRECT_URL apunta al puerto 5432 para migraciones y db push.
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                                                      String                      @id @default(cuid())
+  email                                                   String                      @unique
+  passwordHash                                            String
+  fullName                                                String
+  phone                                                   String?
+  role                                                    Role
+  active                                                  Boolean                     @default(true)
+  createdAt                                               DateTime                    @default(now())
+  updatedAt                                               DateTime                    @updatedAt
+  contract_requests                                       contract_requests[]
+  contracts_contracts_landlordIdTousers                   contracts[]                 @relation("contracts_landlordIdTousers")
+  contracts_contracts_tenantIdTousers                     contracts[]                 @relation("contracts_tenantIdTousers")
+  identity_document_reviews                               identity_document_reviews[]
+  identity_documents_identity_documents_reviewedByTousers identity_documents[]        @relation("identity_documents_reviewedByTousers")
+  identity_documents_identity_documents_uploadedByTousers identity_documents[]        @relation("identity_documents_uploadedByTousers")
+  identity_documents_identity_documents_userIdTousers     identity_documents[]        @relation("identity_documents_userIdTousers")
+  properties_properties_createdByTousers                  properties[]                @relation("properties_createdByTousers")
+  properties_properties_landlordIdTousers                 properties[]                @relation("properties_landlordIdTousers")
+
+  @@index([role])
+  @@map("users")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model amenity_catalog {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String               @unique(map: "amenity_catalog_name_unique")
+  slug               String               @unique(map: "amenity_catalog_slug_unique") @db.VarChar(120)
+  active             Boolean              @default(true)
+  createdAt          DateTime             @default(now()) @db.Timestamp(6)
+  updatedAt          DateTime             @default(now()) @db.Timestamp(6)
+  property_amenities property_amenities[]
+}
+
+model contract_requests {
+  id         String        @id
+  propertyId String
+  tenantId   String
+  status     RequestStatus @default(PENDIENTE)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime
+  properties properties    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  users      User          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, status])
+  @@index([tenantId, status])
+}
+
+model contracts {
+  id                                String         @id
+  propertyId                        String
+  tenantId                          String
+  landlordId                        String
+  startDate                         DateTime
+  endDate                           DateTime
+  status                            ContractStatus @default(ACTIVO)
+  createdAt                         DateTime       @default(now())
+  updatedAt                         DateTime
+  users_contracts_landlordIdTousers User           @relation("contracts_landlordIdTousers", fields: [landlordId], references: [id])
+  properties                        properties     @relation(fields: [propertyId], references: [id])
+  users_contracts_tenantIdTousers   User           @relation("contracts_tenantIdTousers", fields: [tenantId], references: [id])
+
+  @@index([landlordId, status])
+  @@index([propertyId, status])
+  @@index([tenantId, status])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model identity_document_reviews {
+  id                 String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identityDocumentId String                 @db.Uuid
+  reviewerId         String
+  previousStatus     IdentityDocumentStatus
+  newStatus          IdentityDocumentStatus
+  notes              String?
+  createdAt          DateTime               @default(now()) @db.Timestamp(6)
+  identity_documents identity_documents     @relation(fields: [identityDocumentId], references: [id], map: "identity_document_reviews_document_fkey")
+  users              User                   @relation(fields: [reviewerId], references: [id], map: "identity_document_reviews_reviewer_fkey")
+
+  @@index([identityDocumentId, createdAt(sort: Desc)], map: "identity_document_reviews_document_created_idx")
+  @@index([reviewerId, createdAt(sort: Desc)], map: "identity_document_reviews_reviewer_created_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model identity_documents {
+  id                                         String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                                     String
+  uploadedBy                                 String
+  documentType                               IdentityDocumentType
+  storagePath                                String                      @unique(map: "identity_documents_storage_path_unique")
+  originalName                               String
+  extension                                  String                      @db.VarChar(10)
+  mimeType                                   String                      @db.VarChar(80)
+  fileSize                                   BigInt
+  sha256                                     String                      @db.VarChar(64)
+  verificationStatus                         IdentityDocumentStatus      @default(PENDIENTE)
+  uploadedAt                                 DateTime                    @default(now()) @db.Timestamp(6)
+  reviewedAt                                 DateTime?                   @db.Timestamp(6)
+  reviewedBy                                 String?
+  reviewNotes                                String?
+  expiresAt                                  DateTime?                   @db.Timestamp(6)
+  isCurrent                                  Boolean                     @default(true)
+  createdAt                                  DateTime                    @default(now()) @db.Timestamp(6)
+  updatedAt                                  DateTime                    @default(now()) @db.Timestamp(6)
+  identity_document_reviews                  identity_document_reviews[]
+  users_identity_documents_reviewedByTousers User?                       @relation("identity_documents_reviewedByTousers", fields: [reviewedBy], references: [id], onDelete: Restrict, map: "identity_documents_reviewer_fkey")
+  users_identity_documents_uploadedByTousers User                        @relation("identity_documents_uploadedByTousers", fields: [uploadedBy], references: [id], map: "identity_documents_uploaded_by_fkey")
+  users_identity_documents_userIdTousers     User                        @relation("identity_documents_userIdTousers", fields: [userId], references: [id], map: "identity_documents_user_fkey")
+
+  @@index([verificationStatus, uploadedAt(sort: Desc), id], map: "identity_documents_status_uploaded_idx")
+  @@index([uploadedBy, createdAt(sort: Desc), id], map: "identity_documents_uploaded_by_created_idx")
+  @@index([userId, uploadedAt(sort: Desc), id], map: "identity_documents_user_uploaded_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model properties {
+  id                                 String               @id
+  landlordId                         String
+  title                              String
+  address                            String
+  monthlyRent                        Decimal              @db.Decimal(10, 2)
+  status                             PropertyStatus       @default(DISPONIBLE)
+  createdAt                          DateTime             @default(now())
+  updatedAt                          DateTime
+  description                        String?
+  bedrooms                           Int?
+  bathrooms                          Int?
+  latitude                           Decimal?             @db.Decimal(10, 7)
+  longitude                          Decimal?             @db.Decimal(10, 7)
+  createdBy                          String?
+  contract_requests                  contract_requests[]
+  contracts                          contracts[]
+  users_properties_createdByTousers  User?                @relation("properties_createdByTousers", fields: [createdBy], references: [id], onDelete: Restrict, map: "properties_createdby_fkey")
+  users_properties_landlordIdTousers User                 @relation("properties_landlordIdTousers", fields: [landlordId], references: [id])
+  property_amenities                 property_amenities[]
+  property_images                    property_images[]
+  property_services                  property_services[]
+
+  @@index([createdBy, createdAt(sort: Desc), id], map: "properties_created_by_created_at_id_idx")
+  @@index([landlordId])
+  @@index([landlordId, createdAt(sort: Desc), id], map: "properties_landlord_created_at_id_idx")
+  @@index([status, createdAt(sort: Desc), id], map: "properties_status_created_at_id_idx")
+  @@index([status])
+  @@index([status, monthlyRent], map: "properties_status_monthly_rent_idx")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_amenities {
+  propertyId      String
+  amenityId       String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamp(6)
+  amenity_catalog amenity_catalog @relation(fields: [amenityId], references: [id], map: "property_amenities_amenity_fkey")
+  properties      properties      @relation(fields: [propertyId], references: [id], onDelete: Cascade, map: "property_amenities_property_fkey")
+
+  @@id([propertyId, amenityId])
+  @@index([amenityId, propertyId], map: "property_amenities_amenity_property_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_images {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  propertyId   String
+  storagePath  String     @unique(map: "property_images_storage_path_unique")
+  originalName String
+  extension    String     @db.VarChar(10)
+  mimeType     String     @db.VarChar(80)
+  fileSize     BigInt
+  sha256       String     @db.VarChar(64)
+  width        Int?
+  height       Int?
+  isPrimary    Boolean    @default(false)
+  displayOrder Int        @default(0)
+  createdAt    DateTime   @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime   @default(now()) @db.Timestamp(6)
+  properties   properties @relation(fields: [propertyId], references: [id], onDelete: Cascade, map: "property_images_property_fkey")
+
+  @@unique([propertyId, sha256], map: "property_images_property_sha256_idx")
+  @@index([propertyId, displayOrder, id], map: "property_images_property_order_idx")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model property_services {
+  propertyId      String
+  serviceId       String          @db.Uuid
+  createdAt       DateTime        @default(now()) @db.Timestamp(6)
+  properties      properties      @relation(fields: [propertyId], references: [id], onDelete: Cascade, map: "property_services_property_fkey")
+  service_catalog service_catalog @relation(fields: [serviceId], references: [id], map: "property_services_service_fkey")
+
+  @@id([propertyId, serviceId])
+  @@index([serviceId, propertyId], map: "property_services_service_property_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model service_catalog {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String              @unique(map: "service_catalog_name_unique")
+  slug              String              @unique(map: "service_catalog_slug_unique") @db.VarChar(120)
+  active            Boolean             @default(true)
+  createdAt         DateTime            @default(now()) @db.Timestamp(6)
+  updatedAt         DateTime            @default(now()) @db.Timestamp(6)
+  property_services property_services[]
 }
 
 enum Role {
@@ -16,17 +223,32 @@ enum Role {
   MUNICIPIO
 }
 
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  fullName     String
-  phone        String?
-  role         Role
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+enum ContractStatus {
+  ACTIVO
+  FINALIZADO
+  EN_RENOVACION
+}
 
-  @@index([role])
-  @@map("users")
+enum IdentityDocumentStatus {
+  PENDIENTE
+  EN_REVISION
+  VERIFICADO
+  RECHAZADO
+}
+
+enum IdentityDocumentType {
+  CEDULA
+  PASAPORTE
+}
+
+enum PropertyStatus {
+  DISPONIBLE
+  OCUPADO
+  MANTENIMIENTO
+}
+
+enum RequestStatus {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
 }
