@@ -16,12 +16,12 @@ export const registerSchema = z.object({
   phone: z
     .string()
     .trim()
-    .optional()
-    .transform((value) => (value && value.length > 0 ? value : undefined))
+    .min(7, "Ingresa un teléfono válido")
     .refine(
-      (value) => value === undefined || (value.length >= 7 && value.length <= 20),
+      (value) => value.length <= 20,
       "Teléfono inválido",
     ),
+  nationalId: z.string().trim().regex(/^\d{10}$/, "La cédula debe tener 10 dígitos"),
   password: z
     .string()
     .min(8, "La contraseña debe tener al menos 8 caracteres")
@@ -34,11 +34,11 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z
+  identifier: z
     .string()
     .trim()
-    .email("Correo electrónico inválido")
-    .transform((value) => value.toLowerCase()),
+    .min(3, "Ingresa tu correo o número de cédula")
+    .max(160),
   password: z.string().min(1, "La contraseña es obligatoria"),
 });
 
@@ -51,6 +51,7 @@ export function toPublicUser(user: {
   email: string;
   fullName: string;
   phone: string | null;
+  nationalId?: string | null;
   role: string;
   active: boolean;
   createdAt: Date;
@@ -60,6 +61,7 @@ export function toPublicUser(user: {
     email: user.email,
     fullName: user.fullName,
     phone: user.phone,
+    nationalId: user.nationalId,
     role: user.role,
     active: user.active,
     createdAt: user.createdAt.toISOString(),

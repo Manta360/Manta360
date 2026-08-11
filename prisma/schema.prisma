@@ -14,6 +14,7 @@ model User {
   passwordHash                                            String
   fullName                                                String
   phone                                                   String?
+  nationalId                                              String?                     @unique
   role                                                    Role
   active                                                  Boolean                     @default(true)
   createdAt                                               DateTime                    @default(now())
@@ -49,6 +50,9 @@ model contract_requests {
   propertyId String
   tenantId   String
   status     RequestStatus @default(PENDIENTE)
+  message    String?
+  startDate  DateTime?
+  endDate    DateTime?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime
   properties properties    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -66,6 +70,23 @@ model contracts {
   startDate                         DateTime
   endDate                           DateTime
   status                            ContractStatus @default(ACTIVO)
+  monthlyRent                       Decimal?       @db.Decimal(10, 2)
+  city                              String?
+  province                          String?
+  canton                            String?
+  parish                            String?
+  neighborhood                      String?
+  street                            String?
+  houseNumber                       String?
+  intersection                      String?
+  purpose                           String?
+  depositAmount                     Decimal?       @db.Decimal(10, 2)
+  paymentMethod                     String?
+  landlordSignedAt                  DateTime?
+  tenantSignedAt                    DateTime?
+  municipalReviewedAt               DateTime?
+  municipalReviewedBy               String?
+  municipalReviewNotes              String?
   createdAt                         DateTime       @default(now())
   updatedAt                         DateTime
   users_contracts_landlordIdTousers User           @relation("contracts_landlordIdTousers", fields: [landlordId], references: [id])
@@ -101,6 +122,7 @@ model identity_documents {
   userId                                     String
   uploadedBy                                 String
   documentType                               IdentityDocumentType
+  side                                       String                      @default("UNICA") @db.VarChar(12)
   storagePath                                String                      @unique(map: "identity_documents_storage_path_unique")
   originalName                               String
   extension                                  String                      @db.VarChar(10)
@@ -142,6 +164,9 @@ model properties {
   latitude                           Decimal?             @db.Decimal(10, 7)
   longitude                          Decimal?             @db.Decimal(10, 7)
   createdBy                          String?
+  approved                           Boolean              @default(false)
+  approvedAt                         DateTime?
+  approvedBy                         String?
   contract_requests                  contract_requests[]
   contracts                          contracts[]
   users_properties_createdByTousers  User?                @relation("properties_createdByTousers", fields: [createdBy], references: [id], onDelete: Restrict, map: "properties_createdby_fkey")
@@ -156,6 +181,34 @@ model properties {
   @@index([status, createdAt(sort: Desc), id], map: "properties_status_created_at_id_idx")
   @@index([status])
   @@index([status, monthlyRent], map: "properties_status_monthly_rent_idx")
+}
+
+/// Mensajes privados entre interesado y arrendador sobre un inmueble.
+model chat_messages {
+  id          String   @id
+  propertyId  String
+  senderId    String
+  recipientId String
+  content     String
+  createdAt   DateTime @default(now())
+  readAt      DateTime?
+
+  @@index([propertyId, createdAt])
+  @@index([senderId, recipientId, createdAt])
+}
+
+/// Solicitudes de renovación disponibles durante los últimos 15 días del contrato.
+model contract_renewal_requests {
+  id              String        @id
+  contractId      String
+  requestedBy     String
+  proposedEndDate DateTime
+  status          RequestStatus @default(PENDIENTE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime
+
+  @@index([contractId, status])
+  @@index([requestedBy, status])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -224,7 +277,10 @@ enum Role {
 }
 
 enum ContractStatus {
+  PENDIENTE_FIRMA
+  PENDIENTE_MUNICIPIO
   ACTIVO
+  RECHAZADO_MUNICIPIO
   FINALIZADO
   EN_RENOVACION
 }

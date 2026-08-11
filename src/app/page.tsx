@@ -2,6 +2,8 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { getSession } from "@/lib/session";
 import { ROLE_HOME } from "@/lib/roles";
+import { RentalCatalog } from "@/components/rental-catalog";
+import { RoleExplorer } from "@/components/role-explorer";
 
 const roles = [
   { title: "Arrendatario", text: "Encuentra un hogar seguro, consulta opciones y gestiona tus solicitudes.", color: "bg-blue", icon: "⌂" },
@@ -32,6 +34,8 @@ export default async function HomePage() {
         </section>
         <section id="roles" className="mx-auto w-full max-w-6xl px-5 py-20 sm:px-8"><div className="max-w-2xl"><p className="font-bold uppercase tracking-[.2em] text-orange">Una plataforma para todos</p><h2 className="mt-3 text-4xl font-black tracking-tight text-navy sm:text-5xl">Hacemos equipo por Manta.</h2><p className="mt-4 text-lg text-slate-600">Cada rol tiene las herramientas necesarias para vivir, ofrecer y gestionar mejor.</p></div><div className="mt-10 grid gap-5 md:grid-cols-3">{roles.map((role) => <article key={role.title} className="group rounded-3xl border border-slate-200 bg-white p-7 shadow-sm transition duration-300 hover:-translate-y-2 hover:shadow-xl hover:shadow-blue/10"><div className={`grid h-12 w-12 place-items-center rounded-2xl ${role.color} text-2xl font-bold text-white`}>{role.icon}</div><h3 className="mt-6 text-xl font-bold text-navy">{role.title}</h3><p className="mt-3 leading-7 text-slate-600">{role.text}</p><span className="mt-6 inline-block font-bold text-blue transition group-hover:translate-x-1">Saber más →</span></article>)}</div></section>
         <section className="mx-auto mb-20 max-w-6xl px-5 sm:px-8"><div className="overflow-hidden rounded-3xl bg-[#e7f5fb] p-8 sm:p-12"><div className="max-w-2xl"><p className="font-bold text-violet">Manta, nuestro hogar</p><h2 className="mt-3 text-3xl font-black text-navy sm:text-4xl">Más cerca de lo que necesitas.</h2><p className="mt-4 text-slate-600">Accede a información confiable y oportunidades habitacionales pensadas para nuestra comunidad.</p><Link href="/login" className="mt-7 inline-block font-bold text-blue hover:text-navy">Ya tengo una cuenta →</Link></div></div></section>
+        <section className="mx-auto max-w-6xl px-5 pb-16 sm:px-8"><RoleExplorer /></section>
+        <section className="mx-auto max-w-6xl px-5 py-12 sm:px-8"><div className="mb-8"><p className="font-bold uppercase tracking-[.2em] text-orange">Catalogo publico</p><h2 className="mt-3 text-3xl font-black text-navy">Propiedades disponibles</h2><p className="mt-3 text-slate-600">Explora las propiedades y el mapa sin crear una cuenta. Registrate solamente cuando quieras contactar al arrendador.</p></div><RentalCatalog /></section>
       </main>
     </div>
   );

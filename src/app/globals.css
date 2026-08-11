@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* El prefijo monetario no debe superponerse con el valor del campo. */
+.field-input.pl-8 { padding-left: 3rem; }
+
 :root {
   --navy: #003366;
   --blue: #0055a5;
