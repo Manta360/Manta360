@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const { email, password } = parsed.data;
-  const user = await prisma.user.findUnique({ where: { email } });
+  const { identifier, password } = parsed.data;
+  const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { nationalId: identifier }] } });
 
   if (!user || !user.active) {
     return NextResponse.json(

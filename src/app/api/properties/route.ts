@@ -118,7 +118,9 @@ export async function GET(request: Request) {
   const minPrice = minPriceParam === null ? null : Number(minPriceParam);
   const maxPrice = maxPriceParam === null ? null : Number(maxPriceParam);
   const services = (url.searchParams.get("services") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
-  const where: Prisma.propertiesWhereInput = { status: PropertyStatus.DISPONIBLE };
+  // El catálogo público mantiene la propiedad visible durante conversaciones y
+  // solicitudes; solo se retira cuando el contrato queda formalizado.
+  const where: Prisma.propertiesWhereInput = { status: PropertyStatus.DISPONIBLE, approved: true };
 
   if (minPrice !== null && Number.isFinite(minPrice) && minPrice >= 0) where.monthlyRent = { ...(where.monthlyRent as object), gte: minPrice };
   if (maxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0) where.monthlyRent = { ...(where.monthlyRent as object), lte: maxPrice };
@@ -147,6 +149,11 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
   if (session.role !== "ARRENDADOR") return NextResponse.json({ error: "Solo un arrendador puede publicar propiedades" }, { status: 403 });
 
+  const identityDocuments = await prisma.identity_documents.findMany({ where: { userId: session.sub, isCurrent: true, verificationStatus: "VERIFICADO" }, select: { documentType: true, side: true } });
+  const verifiedSides = new Set(identityDocuments.filter((document) => document.documentType === "CEDULA").map((document) => document.side));
+  const canPublish = identityDocuments.some((document) => document.documentType === "PASAPORTE") || (verifiedSides.has("FRENTE") && verifiedSides.has("REVERSO"));
+  if (!canPublish) return NextResponse.json({ error: "Debes tener verificados ambos lados de tu cedula o un pasaporte antes de publicar una propiedad" }, { status: 403 });
+
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -170,7 +177,10 @@ export async function POST(request: Request) {
     services: uniqueLabels(services),
     amenities: uniqueLabels(amenities),
   });
-  if (!parsed.success) return NextResponse.json({ error: "Datos de propiedad inválidos", details: parsed.error.flatten().fieldErrors }, { status: 400 });
+  if (!parsed.success) {
+    const details = parsed.error.flatten().fieldErrors;
+    return NextResponse.json({ error: `Revisa los campos obligatorios: ${Object.keys(details).join(", ")}`, details }, { status: 400 });
+  }
 
   const files = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
   if (files.length < 3) return NextResponse.json({ error: "Debes cargar al menos 3 imágenes" }, { status: 400 });

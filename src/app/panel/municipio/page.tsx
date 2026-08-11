@@ -1,4 +1,8 @@
+import { SuperadminDashboard } from "@/components/superadmin-dashboard";
+
 export default function MunicipioPanelPage() {
+  return <SuperadminDashboard />;
+  /*
   return (
     <section className="space-y-3">
       <h2 className="text-xl font-semibold">Espacio del Municipio</h2>
@@ -8,5 +12,5 @@ export default function MunicipioPanelPage() {
         en PostgreSQL.
       </p>
     </section>
-  );
+  );*/
 }

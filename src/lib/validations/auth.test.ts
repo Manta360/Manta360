@@ -22,6 +22,7 @@ describe("KAN-10 / US01 — registro", () => {
       fullName: "Luis Mora",
       email: "Luis@Example.COM",
       phone: "0987654321",
+      nationalId: "1316551017",
       password: "segura123",
       role: "ARRENDATARIO",
     });

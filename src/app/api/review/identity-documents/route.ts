@@ -39,6 +39,7 @@ export async function GET(request: Request) {
       user: document.users_identity_documents_userIdTousers,
       uploadedBy: document.users_identity_documents_uploadedByTousers,
       documentType: document.documentType,
+      side: document.side,
       originalName: document.originalName,
       mimeType: document.mimeType,
       fileSize: Number(document.fileSize),

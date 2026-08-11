@@ -20,6 +20,7 @@ function canManageIdentityDocuments(role: string): boolean {
 function documentResponse(document: {
   id: string;
   documentType: IdentityDocumentType;
+  side: string;
   originalName: string;
   extension: string;
   mimeType: string;
@@ -36,6 +37,7 @@ function documentResponse(document: {
   return createStorageSignedUrl(IDENTITY_DOCUMENTS_BUCKET, document.storagePath, 300).then((downloadUrl) => ({
     id: document.id,
     documentType: document.documentType,
+    side: document.side,
     originalName: document.originalName,
     extension: document.extension,
     mimeType: document.mimeType,
@@ -75,6 +77,9 @@ export async function POST(request: Request) {
   const typeValue = formData.get("documentType");
   const parsedType = documentTypeSchema.safeParse(typeof typeValue === "string" ? typeValue : "");
   if (!parsedType.success) return NextResponse.json({ error: "Tipo de documento inválido" }, { status: 400 });
+  const sideValue = formData.get("side");
+  const side = parsedType.data === "CEDULA" ? (sideValue === "FRENTE" || sideValue === "REVERSO" ? sideValue : null) : "UNICA";
+  if (!side) return NextResponse.json({ error: "Indica si corresponde al frente o reverso de la cedula" }, { status: 400 });
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "Debes seleccionar un documento" }, { status: 400 });
 
@@ -89,18 +94,19 @@ export async function POST(request: Request) {
   let storagePath = "";
   try {
     const upload = await validateUpload(file, "identity-document");
-    const duplicate = await prisma.identity_documents.findFirst({ where: { userId: session.sub, documentType: parsedType.data, sha256: upload.sha256 } });
+    const duplicate = await prisma.identity_documents.findFirst({ where: { userId: session.sub, documentType: parsedType.data, side, sha256: upload.sha256 } });
     if (duplicate) return NextResponse.json({ error: "Ese documento ya fue cargado anteriormente" }, { status: 409 });
 
     storagePath = identityDocumentPath(session.sub, upload.extension);
     await uploadStorageFile(IDENTITY_DOCUMENTS_BUCKET, storagePath, upload);
     const document = await prisma.$transaction(async (tx) => {
-      await tx.identity_documents.updateMany({ where: { userId: session.sub, documentType: parsedType.data, isCurrent: true }, data: { isCurrent: false } });
+      await tx.identity_documents.updateMany({ where: { userId: session.sub, documentType: parsedType.data, side, isCurrent: true }, data: { isCurrent: false } });
       return tx.identity_documents.create({
         data: {
           userId: session.sub,
           uploadedBy: session.sub,
           documentType: parsedType.data,
+          side,
           storagePath,
           originalName: upload.originalName,
           extension: upload.extension,

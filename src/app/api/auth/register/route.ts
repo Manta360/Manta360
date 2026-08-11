@@ -38,6 +38,7 @@ export async function POST(request: Request) {
         passwordHash,
         fullName: data.fullName,
         phone: data.phone,
+        nationalId: data.nationalId,
         role: data.role,
       },
     });
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
       error.code === "P2002"
     ) {
       return NextResponse.json(
-        { error: "Ya existe una cuenta con ese correo" },
+        { error: "Ya existe una cuenta con ese correo o cédula" },
         { status: 409 },
       );
     }

@@ -3,8 +3,12 @@
  * Uso:
  *   MUNICIPIO_EMAIL=... MUNICIPIO_PASSWORD=... npm run db:seed-municipio
  */
+import { loadEnvConfig } from "@next/env";
 import { PrismaClient, Role } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
+
+// `tsx` no carga .env automáticamente como Next.js; el seed sí lo necesita.
+loadEnvConfig(process.cwd());
 
 const prisma = new PrismaClient();
 
@@ -15,6 +19,7 @@ async function main() {
   const password = process.env.MUNICIPIO_PASSWORD ?? "Municipio2026!";
   const fullName = process.env.MUNICIPIO_NAME ?? "Funcionario Municipal";
   const phone = process.env.MUNICIPIO_PHONE ?? "052612345";
+  const nationalId = process.env.MUNICIPIO_CEDULA ?? "0000000000";
 
   const passwordHash = await hashPassword(password);
 
@@ -24,6 +29,7 @@ async function main() {
       passwordHash,
       fullName,
       phone,
+      nationalId,
       role: Role.MUNICIPIO,
       active: true,
     },
@@ -32,6 +38,7 @@ async function main() {
       passwordHash,
       fullName,
       phone,
+      nationalId,
       role: Role.MUNICIPIO,
       active: true,
     },
