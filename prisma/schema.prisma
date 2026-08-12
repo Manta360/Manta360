@@ -26,6 +26,8 @@ model User {
   identity_documents_identity_documents_reviewedByTousers identity_documents[]        @relation("identity_documents_reviewedByTousers")
   identity_documents_identity_documents_uploadedByTousers identity_documents[]        @relation("identity_documents_uploadedByTousers")
   identity_documents_identity_documents_userIdTousers     identity_documents[]        @relation("identity_documents_userIdTousers")
+  incident_reports_incident_reports_landlordIdTousers     incident_reports[]          @relation("incident_reports_landlordIdTousers")
+  incident_reports_incident_reports_tenantIdTousers       incident_reports[]          @relation("incident_reports_tenantIdTousers")
   properties_properties_createdByTousers                  properties[]                @relation("properties_createdByTousers")
   properties_properties_landlordIdTousers                 properties[]                @relation("properties_landlordIdTousers")
 
@@ -63,14 +65,14 @@ model contract_requests {
 }
 
 model contracts {
-  id                                String         @id
+  id                                String             @id
   propertyId                        String
   tenantId                          String
   landlordId                        String
   startDate                         DateTime
   endDate                           DateTime
-  status                            ContractStatus @default(ACTIVO)
-  monthlyRent                       Decimal?       @db.Decimal(10, 2)
+  status                            ContractStatus     @default(ACTIVO)
+  monthlyRent                       Decimal?           @db.Decimal(10, 2)
   city                              String?
   province                          String?
   canton                            String?
@@ -80,18 +82,19 @@ model contracts {
   houseNumber                       String?
   intersection                      String?
   purpose                           String?
-  depositAmount                     Decimal?       @db.Decimal(10, 2)
+  depositAmount                     Decimal?           @db.Decimal(10, 2)
   paymentMethod                     String?
   landlordSignedAt                  DateTime?
   tenantSignedAt                    DateTime?
   municipalReviewedAt               DateTime?
   municipalReviewedBy               String?
   municipalReviewNotes              String?
-  createdAt                         DateTime       @default(now())
+  createdAt                         DateTime           @default(now())
   updatedAt                         DateTime
-  users_contracts_landlordIdTousers User           @relation("contracts_landlordIdTousers", fields: [landlordId], references: [id])
-  properties                        properties     @relation(fields: [propertyId], references: [id])
-  users_contracts_tenantIdTousers   User           @relation("contracts_tenantIdTousers", fields: [tenantId], references: [id])
+  incident_reports                  incident_reports[]
+  users_contracts_landlordIdTousers User               @relation("contracts_landlordIdTousers", fields: [landlordId], references: [id])
+  properties                        properties         @relation(fields: [propertyId], references: [id])
+  users_contracts_tenantIdTousers   User               @relation("contracts_tenantIdTousers", fields: [tenantId], references: [id])
 
   @@index([landlordId, status])
   @@index([propertyId, status])
@@ -169,6 +172,7 @@ model properties {
   approvedBy                         String?
   contract_requests                  contract_requests[]
   contracts                          contracts[]
+  incident_reports                   incident_reports[]
   users_properties_createdByTousers  User?                @relation("properties_createdByTousers", fields: [createdBy], references: [id], onDelete: Restrict, map: "properties_createdby_fkey")
   users_properties_landlordIdTousers User                 @relation("properties_landlordIdTousers", fields: [landlordId], references: [id])
   property_amenities                 property_amenities[]
@@ -185,12 +189,12 @@ model properties {
 
 /// Mensajes privados entre interesado y arrendador sobre un inmueble.
 model chat_messages {
-  id          String   @id
+  id          String    @id
   propertyId  String
   senderId    String
   recipientId String
   content     String
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   readAt      DateTime?
 
   @@index([propertyId, createdAt])
@@ -209,6 +213,28 @@ model contract_renewal_requests {
 
   @@index([contractId, status])
   @@index([requestedBy, status])
+}
+
+/// Reportes de incidencias/averías reportados por el arrendatario sobre un contrato activo.
+model incident_reports {
+  id                                       String         @id
+  contractId                               String
+  propertyId                               String
+  tenantId                                 String
+  landlordId                               String
+  description                              String
+  incidentDate                             DateTime
+  status                                   IncidentStatus @default(PENDIENTE)
+  createdAt                                DateTime       @default(now())
+  updatedAt                                DateTime
+  contracts                                contracts      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  properties                               properties     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  users_incident_reports_landlordIdTousers User           @relation("incident_reports_landlordIdTousers", fields: [landlordId], references: [id])
+  users_incident_reports_tenantIdTousers   User           @relation("incident_reports_tenantIdTousers", fields: [tenantId], references: [id])
+
+  @@index([contractId, status])
+  @@index([tenantId, status])
+  @@index([landlordId, status])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -295,6 +321,12 @@ enum IdentityDocumentStatus {
 enum IdentityDocumentType {
   CEDULA
   PASAPORTE
+}
+
+enum IncidentStatus {
+  PENDIENTE
+  EN_PROCESO
+  RESUELTO
 }
 
 enum PropertyStatus {
