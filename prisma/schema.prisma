@@ -17,6 +17,9 @@ model User {
   nationalId                                              String?                     @unique
   role                                                    Role
   active                                                  Boolean                     @default(true)
+  disabledAt                                              DateTime?
+  disabledBy                                              String?
+  disableReason                                           String?
   createdAt                                               DateTime                    @default(now())
   updatedAt                                               DateTime                    @updatedAt
   contract_requests                                       contract_requests[]
@@ -170,6 +173,9 @@ model properties {
   approved                           Boolean              @default(false)
   approvedAt                         DateTime?
   approvedBy                         String?
+  disabledAt                         DateTime?
+  disabledBy                         String?
+  disableReason                      String?
   contract_requests                  contract_requests[]
   contracts                          contracts[]
   incident_reports                   incident_reports[]
@@ -333,6 +339,7 @@ enum PropertyStatus {
   DISPONIBLE
   OCUPADO
   MANTENIMIENTO
+  INHABILITADO
 }
 
 enum RequestStatus {
