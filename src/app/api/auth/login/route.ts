@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const { identifier, password } = parsed.data;
   const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { nationalId: identifier }] } });
 
-  if (!user || !user.active) {
+  if (!user) {
     return NextResponse.json(
       { error: "Correo o contraseña incorrectos" },
       { status: 401 },
@@ -39,6 +39,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Correo o contraseña incorrectos" },
       { status: 401 },
+    );
+  }
+
+  if (!user.active) {
+    return NextResponse.json(
+      { error: "Tu cuenta ha sido inhabilitada por el Municipio." },
+      { status: 403 },
     );
   }
 

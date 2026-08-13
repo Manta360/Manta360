@@ -17,6 +17,8 @@ Manta360 conecta a **arrendatarios**, **arrendadores** y al **Municipio** en un 
 - Flujo de firmas: ambas partes confirman; luego el Municipio aprueba o rechaza el contrato.
 - La propiedad pasa a `OCUPADO` solo después de la aprobación municipal del contrato.
 - Solicitudes de renovación para contratos próximos a vencer.
+- Reporte de incidencias y quejas: Los arrendatarios con contratos activos pueden reportar problemas; los arrendadores gestionan el estado (Pendiente, En proceso, Resuelto).
+- Control administrativo: El Municipio tiene la potestad de inhabilitar temporalmente a arrendadores o propiedades específicas justificando un motivo.
 
 ## Tecnologías
 
@@ -163,7 +165,7 @@ npm run dev                 # Desarrollo
 npm run build               # Compilación de producción
 npm run start               # Ejecutar compilación de producción
 npm run lint                # Linter
-npm test                    # Pruebas
+npm test            # Ejecutar la suite de pruebas (ver TESTING.md para más detalles)
 npm run db:generate         # Generar Prisma Client
 npm run db:push             # Sincronizar esquema Prisma
 npm run db:seed-municipio   # Crear/actualizar usuario municipal
@@ -185,6 +187,7 @@ src/components/       Componentes de interfaz
 src/lib/              Prisma, autenticación y utilidades
 prisma/schema.prisma  Modelo de datos
 scripts/              Seeds de desarrollo
+TESTING.md            Documentación de la suite de pruebas y cobertura
 ```
 
 ## Equipo
