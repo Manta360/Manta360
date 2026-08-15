@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { MunicipalStatistics, type MunicipalStatisticsData } from "@/components/municipal-statistics";
 
 type Property = {
   id: string;
@@ -58,6 +59,9 @@ export function SuperadminDashboard() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [landlords, setLandlords] = useState<Landlord[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [municipalStatistics, setMunicipalStatistics] = useState<MunicipalStatisticsData | null>(null);
+  const [municipalStatisticsLoading, setMunicipalStatisticsLoading] = useState(true);
+  const [municipalStatisticsError, setMunicipalStatisticsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [disableTarget, setDisableTarget] = useState<DisableTarget | null>(null);
@@ -93,7 +97,28 @@ export function SuperadminDashboard() {
     setLandlords(landlordData.landlords ?? []);
   };
 
-  useEffect(() => { void load(); }, []);
+  const loadMunicipalStatistics = async () => {
+    setMunicipalStatisticsLoading(true);
+    setMunicipalStatisticsError(null);
+    try {
+      const response = await fetch("/api/admin/stats");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "No se pudieron cargar las estadísticas");
+      setMunicipalStatistics(data);
+    } catch (statisticsError) {
+      setMunicipalStatisticsError(statisticsError instanceof Error ? statisticsError.message : "No se pudieron cargar las estadísticas");
+    } finally {
+      setMunicipalStatisticsLoading(false);
+    }
+  };
+
+  const refreshDashboard = async () => {
+    await Promise.all([load(), loadMunicipalStatistics()]);
+  };
+
+  // The dashboard is loaded once on mount; subsequent refreshes follow successful admin actions.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void refreshDashboard(); }, []);
   useEffect(() => {
     function closeWithEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
@@ -172,7 +197,7 @@ export function SuperadminDashboard() {
       setLandlordFormOpen(false);
       setEditingLandlord(null);
       setLandlordForm(emptyLandlordForm);
-      await load();
+      await refreshDashboard();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "No se pudo guardar el arrendador");
     } finally {
@@ -207,7 +232,7 @@ export function SuperadminDashboard() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "No se pudo completar la inhabilitación");
       setDisableTarget(null);
-      await load();
+      await refreshDashboard();
     } catch (submitError) {
       setDisableError(submitError instanceof Error ? submitError.message : "No se pudo completar la inhabilitación");
     } finally {
@@ -230,7 +255,7 @@ export function SuperadminDashboard() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "No se pudo rehabilitar el registro");
       setEnableTarget(null);
-      await load();
+      await refreshDashboard();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "No se pudo rehabilitar el registro");
       setEnableTarget(null);
@@ -251,7 +276,7 @@ export function SuperadminDashboard() {
       setError(data.error ?? "No se pudo actualizar la propiedad");
       return;
     }
-    await load();
+    await refreshDashboard();
   };
 
   const reviewContract = async (id: string, decision: "APROBAR" | "RECHAZAR") => {
@@ -268,7 +293,7 @@ export function SuperadminDashboard() {
       setError(data.error ?? "No se pudo revisar el contrato");
       return;
     }
-    await load();
+    await refreshDashboard();
   };
 
   const pendingContracts = contracts.filter((contract) => contract.status === "PENDIENTE_MUNICIPIO");
@@ -281,6 +306,7 @@ export function SuperadminDashboard() {
     </div>
     {stats ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[["Usuarios", stats.users], ["Por aprobar", stats.pendingProperties], ["Ocupadas", stats.occupiedProperties], ["Contratos activos", stats.activeContracts]].map(([label, value]) => <div key={String(label)} className="rounded-2xl bg-navy p-5 text-white"><p className="text-sm text-blue-100">{label}</p><p className="mt-2 text-3xl font-black">{value}</p></div>)}</div> : null}
     {error ? <p className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p> : null}
+    <MunicipalStatistics data={municipalStatistics} loading={municipalStatisticsLoading} error={municipalStatisticsError} />
     <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-xl font-black text-navy">Contratos por revisar</h3><p className="mt-1 text-sm text-slate-600">Ambas partes ya firmaron. Tu aprobación formaliza el contrato y ocupa el inmueble.</p></div><span className="rounded-full bg-violet px-3 py-1 text-sm font-bold text-white">{pendingContracts.length} pendientes</span></div>
       <div className="mt-4 space-y-3">{pendingContracts.length === 0 ? <p className="rounded-xl bg-white p-4 text-sm text-slate-500">No hay contratos esperando aprobación municipal.</p> : pendingContracts.map((contract) => <article key={contract.id} className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-violet-100 bg-white p-4"><div><p className="font-bold text-navy">{contract.properties.title}</p><p className="text-sm text-slate-500">{contract.users_contracts_landlordIdTousers.fullName} ↔ {contract.users_contracts_tenantIdTousers.fullName}</p><p className="mt-1 text-xs text-slate-500">{new Date(contract.startDate).toLocaleDateString("es-EC")} a {new Date(contract.endDate).toLocaleDateString("es-EC")}</p></div><div className="flex gap-2"><button disabled={busy === contract.id} onClick={() => void reviewContract(contract.id, "APROBAR")} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Aprobar contrato</button><button disabled={busy === contract.id} onClick={() => void reviewContract(contract.id, "RECHAZAR")} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-50">Rechazar</button></div></article>)}</div>
