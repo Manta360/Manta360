@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { Prisma, PropertyStatus } from "@prisma/client";
-import { z } from "zod";
 import { getActiveSession } from "@/lib/server-auth";
 import { createTextId } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
@@ -12,22 +11,14 @@ import {
   removeStorageFile,
   uploadStorageFile,
 } from "@/lib/supabase/storage";
+import {
+  propertyCatalogSlug,
+  propertyInputSchema,
+  uniquePropertyLabels,
+} from "@/lib/property-validation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const propertySchema = z.object({
-  title: z.string().trim().min(3).max(160),
-  address: z.string().trim().min(3).max(240),
-  monthlyRent: z.coerce.number().finite().positive().max(100000),
-  bedrooms: z.coerce.number().int().min(0).max(100),
-  bathrooms: z.coerce.number().int().min(0).max(100),
-  description: z.string().trim().min(10).max(5000),
-  latitude: z.coerce.number().finite().min(-90).max(90),
-  longitude: z.coerce.number().finite().min(-180).max(180),
-  services: z.array(z.string().trim().min(1).max(80)).max(30),
-  amenities: z.array(z.string().trim().min(1).max(80)).max(30),
-});
 
 function formString(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -43,20 +34,6 @@ function formStringArray(formData: FormData, name: string): string[] | null {
   } catch {
     return null;
   }
-}
-
-function uniqueLabels(values: string[]): string[] {
-  return [...new Map(values.map((value) => [value.toLocaleLowerCase("es-EC"), value])).values()];
-}
-
-function catalogSlug(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase("es-EC")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 120);
 }
 
 type PropertyWithRelations = Prisma.propertiesGetPayload<{ include: ReturnType<typeof findPropertyInclude> }>;
@@ -165,7 +142,7 @@ export async function POST(request: Request) {
   const amenities = formStringArray(formData, "amenities");
   if (!services || !amenities) return NextResponse.json({ error: "Servicios o comodidades inválidos" }, { status: 400 });
 
-  const parsed = propertySchema.safeParse({
+  const parsed = propertyInputSchema.safeParse({
     title: formString(formData, "title"),
     address: formString(formData, "address"),
     monthlyRent: formString(formData, "monthlyRent") || formString(formData, "price"),
@@ -174,8 +151,8 @@ export async function POST(request: Request) {
     description: formString(formData, "description"),
     latitude: formString(formData, "latitude"),
     longitude: formString(formData, "longitude"),
-    services: uniqueLabels(services),
-    amenities: uniqueLabels(amenities),
+    services: uniquePropertyLabels(services),
+    amenities: uniquePropertyLabels(amenities),
   });
   if (!parsed.success) {
     const details = parsed.error.flatten().fieldErrors;
@@ -194,12 +171,12 @@ export async function POST(request: Request) {
     await prisma.$transaction(async (tx) => {
       const serviceEntries = await Promise.all(data.services.map((name) => tx.service_catalog.upsert({
         where: { name },
-        create: { name, slug: `${catalogSlug(name)}-${Date.now().toString(36)}`.slice(0, 120) },
+        create: { name, slug: `${propertyCatalogSlug(name)}-${Date.now().toString(36)}`.slice(0, 120) },
         update: { active: true },
       })));
       const amenityEntries = await Promise.all(data.amenities.map((name) => tx.amenity_catalog.upsert({
         where: { name },
-        create: { name, slug: `${catalogSlug(name)}-${Date.now().toString(36)}`.slice(0, 120) },
+        create: { name, slug: `${propertyCatalogSlug(name)}-${Date.now().toString(36)}`.slice(0, 120) },
         update: { active: true },
       })));
 
