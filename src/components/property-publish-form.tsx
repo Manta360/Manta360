@@ -71,7 +71,7 @@ export function PropertyPublishForm() {
       const response = await fetch("/api/properties", { method: "POST", body: formData });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "No se pudo publicar la propiedad");
-      setSuccess(true); setPhotos([]);
+      setSuccess(true); setPhotos([]); window.dispatchEvent(new Event("property-created"));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "No se pudo publicar la propiedad");
     } finally { setIsSubmitting(false); }

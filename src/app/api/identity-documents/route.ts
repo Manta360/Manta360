@@ -94,8 +94,10 @@ export async function POST(request: Request) {
   let storagePath = "";
   try {
     const upload = await validateUpload(file, "identity-document");
-    const duplicate = await prisma.identity_documents.findFirst({ where: { userId: session.sub, documentType: parsedType.data, side, sha256: upload.sha256 } });
-    if (duplicate) return NextResponse.json({ error: "Ese documento ya fue cargado anteriormente" }, { status: 409 });
+    const duplicate = await prisma.identity_documents.findFirst({
+      where: { userId: session.sub, documentType: parsedType.data, side, sha256: upload.sha256, isCurrent: true },
+    });
+    if (duplicate) return NextResponse.json({ document: await documentResponse(duplicate), alreadyUploaded: true });
 
     storagePath = identityDocumentPath(session.sub, upload.extension);
     await uploadStorageFile(IDENTITY_DOCUMENTS_BUCKET, storagePath, upload);

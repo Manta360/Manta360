@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { PropertyStatus } from "@prisma/client";
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
 import { UploadValidationError, validateUpload } from "@/lib/file-validation";
@@ -13,23 +14,64 @@ import {
 type RouteContext = { params: Promise<{ propertyId: string }> };
 
 async function getOwnedProperty(propertyId: string, userId: string) {
-  return prisma.properties.findFirst({ where: { id: propertyId, landlordId: userId }, select: { id: true } });
+  return prisma.properties.findFirst({
+    where: { id: propertyId, landlordId: userId },
+    select: { id: true, status: true },
+  });
+}
+
+async function requireOwnedEditableProperty(propertyId: string, userId: string) {
+  const property = await getOwnedProperty(propertyId, userId);
+  if (!property) return { error: NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 }) };
+  if (property.status === PropertyStatus.INHABILITADO) {
+    return { error: NextResponse.json({ error: "La propiedad fue inhabilitada por el Municipio y no permite gestionar imÃ¡genes" }, { status: 409 }) };
+  }
+  return { property };
+}
+
+async function requireLandlord() {
+  const session = await getActiveSession();
+  if (!session) return { error: NextResponse.json({ error: "SesiÃ³n requerida" }, { status: 401 }) };
+  if (session.role !== "ARRENDADOR") return { error: NextResponse.json({ error: "OperaciÃ³n no permitida" }, { status: 403 }) };
+  return { session };
+}
+
+export async function GET(_request: Request, context: RouteContext) {
+  const authorization = await requireLandlord();
+  if ("error" in authorization) return authorization.error!;
+  const { propertyId } = await context.params;
+  if (!await getOwnedProperty(propertyId, authorization.session.sub)) {
+    return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
+  }
+
+  const images = await prisma.property_images.findMany({
+    where: { propertyId },
+    orderBy: [{ isPrimary: "desc" }, { displayOrder: "asc" }, { createdAt: "asc" }],
+  });
+  return NextResponse.json({
+    images: await Promise.all(images.map(async (image) => ({
+      id: image.id,
+      url: await createStorageSignedUrl(PROPERTY_IMAGES_BUCKET, image.storagePath),
+      isPrimary: image.isPrimary,
+      displayOrder: image.displayOrder,
+    }))),
+  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const session = await getActiveSession();
-  if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
-  if (session.role !== "ARRENDADOR") return NextResponse.json({ error: "Operación no permitida" }, { status: 403 });
+  const authorization = await requireLandlord();
+  if ("error" in authorization) return authorization.error!;
   const { propertyId } = await context.params;
-  if (!await getOwnedProperty(propertyId, session.sub)) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
+  const ownership = await requireOwnedEditableProperty(propertyId, authorization.session.sub);
+  if ("error" in ownership) return ownership.error!;
 
   const formData = await request.formData();
   const files = formData.getAll("photos").filter((value): value is File => value instanceof File && value.size > 0);
   if (files.length === 0) return NextResponse.json({ error: "Debes cargar al menos una imagen" }, { status: 400 });
-  if (files.length > 12) return NextResponse.json({ error: "Puedes cargar como máximo 12 imágenes por operación" }, { status: 400 });
+  if (files.length > 12) return NextResponse.json({ error: "Puedes cargar como mÃ¡ximo 12 imÃ¡genes por operaciÃ³n" }, { status: 400 });
 
   const existingCount = await prisma.property_images.count({ where: { propertyId } });
-  if (existingCount + files.length > 12) return NextResponse.json({ error: "Una propiedad puede tener como máximo 12 imágenes" }, { status: 400 });
+  if (existingCount + files.length > 12) return NextResponse.json({ error: "Una propiedad puede tener como mÃ¡ximo 12 imÃ¡genes" }, { status: 400 });
 
   const uploadedPaths: string[] = [];
   try {
@@ -61,6 +103,6 @@ export async function POST(request: Request, context: RouteContext) {
     await Promise.all(uploadedPaths.map((path) => removeStorageFile(PROPERTY_IMAGES_BUCKET, path).catch((cleanupError) => console.error("property image cleanup error", cleanupError))));
     if (error instanceof UploadValidationError) return NextResponse.json({ error: error.message }, { status: 400 });
     console.error("property images create error", error);
-    return NextResponse.json({ error: "No se pudieron cargar las imágenes" }, { status: 500 });
+    return NextResponse.json({ error: "No se pudieron cargar las imÃ¡genes" }, { status: 500 });
   }
 }
