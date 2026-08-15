@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createTextId } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
+import { contractUserSelect, toContractUser } from "@/lib/contract-user";
 
 const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), startDate: z.string().datetime().optional(), endDate: z.string().datetime().optional() });
 
@@ -10,8 +11,8 @@ export async function GET() {
   const session = await getActiveSession();
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
   const where = session.role === "ARRENDATARIO" ? { tenantId: session.sub } : session.role === "ARRENDADOR" ? { properties: { landlordId: session.sub } } : {};
-  const requests = await prisma.contract_requests.findMany({ where, include: { properties: { select: { id: true, title: true, address: true, monthlyRent: true, landlordId: true } }, users: { select: { id: true, fullName: true, email: true, phone: true, nationalId: true } } }, orderBy: { createdAt: "desc" } });
-  return NextResponse.json({ requests: requests.map((item) => ({ ...item, properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
+  const requests = await prisma.contract_requests.findMany({ where, include: { properties: { select: { id: true, title: true, address: true, monthlyRent: true, landlordId: true } }, users: { select: contractUserSelect } }, orderBy: { createdAt: "desc" } });
+  return NextResponse.json({ requests: requests.map((item) => ({ ...item, users: toContractUser(item.users), properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
 }
 
 export async function POST(request: Request) {
