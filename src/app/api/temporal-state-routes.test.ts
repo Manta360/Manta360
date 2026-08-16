@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
-vi.mock("@/lib/contract-exclusivity", () => ({ isContractTransactionConflict: vi.fn(), runContractTransaction: vi.fn() }));
+vi.mock("@/lib/contract-exclusivity", () => ({ activeContractStatuses: ["ACTIVO", "EN_RENOVACION"], isContractTransactionConflict: vi.fn(), runContractTransaction: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     contracts: { findUnique: vi.fn(), update: vi.fn() },
@@ -139,6 +139,12 @@ describe("KAN-44 - validaciones directas de API", () => {
     mockedPrisma.contracts.findUnique.mockResolvedValue({ ...contract, status: "ACTIVO", endDate: new Date("2026-08-15T00:00:00.000Z") } as never);
     mockedPrisma.contract_renewal_requests.findFirst.mockResolvedValue(null);
     mockedPrisma.contract_renewal_requests.create.mockImplementation(async ({ data }) => data);
+    const transaction = {
+      contracts: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue({ id: "contract-1" }), findUnique: mockedPrisma.contracts.findUnique, updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      contract_renewal_requests: { findFirst: mockedPrisma.contract_renewal_requests.findFirst, create: mockedPrisma.contract_renewal_requests.create },
+      properties: { findUnique: vi.fn().mockResolvedValue({ id: "property-1", status: "OCUPADO" }), updateMany: vi.fn() },
+    };
+    vi.mocked(runContractTransaction).mockImplementation(async (operation) => operation(transaction as never));
     const allowed = await requestRenewal(new Request("http://localhost/api/contracts/contract-1/renewal", { method: "POST" }), { params: Promise.resolve({ id: "contract-1" }) });
     expect(allowed.status).toBe(201);
 
