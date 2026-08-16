@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { contracts: { findUnique: vi.fn(), update: vi.fn() } } }));
 vi.mock("@/repositories/contracts.server", () => ({ contractsRepository: { findById: vi.fn() } }));
 
 import { GET } from "@/app/api/contracts/[id]/route";

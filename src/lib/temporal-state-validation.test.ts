@@ -1,4 +1,3 @@
-import { IncidentStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 import {
   canTransitionIncidentStatus,
@@ -26,12 +25,12 @@ describe("KAN-44 - reglas temporales y de estado", () => {
   });
 
   it("solo permite el flujo de incidencias pendiente, en proceso y resuelto", () => {
-    expect(canTransitionIncidentStatus(IncidentStatus.PENDIENTE, IncidentStatus.EN_PROCESO)).toBe(true);
-    expect(canTransitionIncidentStatus(IncidentStatus.PENDIENTE, IncidentStatus.RESUELTO)).toBe(true);
-    expect(canTransitionIncidentStatus(IncidentStatus.EN_PROCESO, IncidentStatus.RESUELTO)).toBe(true);
-    expect(canTransitionIncidentStatus(IncidentStatus.EN_PROCESO, IncidentStatus.PENDIENTE)).toBe(false);
-    expect(canTransitionIncidentStatus(IncidentStatus.RESUELTO, IncidentStatus.PENDIENTE)).toBe(false);
-    expect(canTransitionIncidentStatus(IncidentStatus.RESUELTO, IncidentStatus.EN_PROCESO)).toBe(false);
-    expect(canTransitionIncidentStatus(IncidentStatus.PENDIENTE, IncidentStatus.PENDIENTE)).toBe(false);
+    expect(canTransitionIncidentStatus("PENDIENTE", "EN_PROCESO")).toBe(true);
+    expect(canTransitionIncidentStatus("PENDIENTE", "RESUELTO")).toBe(true);
+    expect(canTransitionIncidentStatus("EN_PROCESO", "RESUELTO")).toBe(true);
+    expect(canTransitionIncidentStatus("EN_PROCESO", "PENDIENTE")).toBe(false);
+    expect(canTransitionIncidentStatus("RESUELTO", "PENDIENTE")).toBe(false);
+    expect(canTransitionIncidentStatus("RESUELTO", "EN_PROCESO")).toBe(false);
+    expect(canTransitionIncidentStatus("PENDIENTE", "PENDIENTE")).toBe(false);
   });
 });
