@@ -3,6 +3,8 @@ import { IdentityDocumentType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
+import { serializeIdentityDocument } from "@/lib/identity-document-pg";
+import { identityRepository } from "@/repositories/identity.server";
 import { UploadValidationError, validateUpload } from "@/lib/file-validation";
 import {
   IDENTITY_DOCUMENTS_BUCKET,
@@ -59,8 +61,8 @@ export async function GET() {
   if (!canManageIdentityDocuments(session.role)) return NextResponse.json({ error: "Este panel no puede consultar documentos de identidad" }, { status: 403 });
 
   try {
-    const documents = await prisma.identity_documents.findMany({ where: { userId: session.sub }, orderBy: [{ isCurrent: "desc" }, { uploadedAt: "desc" }] });
-    return NextResponse.json({ documents: await Promise.all(documents.map(documentResponse)) });
+    const documents = await identityRepository.listDocumentsForUser(session.sub);
+    return NextResponse.json({ documents: await Promise.all(documents.map(serializeIdentityDocument)) });
   } catch (error) {
     console.error("identity documents list error", error);
     return NextResponse.json({ error: "No se pudieron cargar los documentos" }, { status: 500 });

@@ -21,6 +21,7 @@
     "db:test-properties-mine": "tsx scripts/test-test-postgres-properties-mine.ts",
     "db:test-property-detail": "tsx scripts/test-test-postgres-property-detail.ts",
     "db:test-properties-catalog": "tsx scripts/test-test-postgres-properties-catalog.ts",
+    "db:test-identity-documents": "tsx scripts/test-test-postgres-identity-documents.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

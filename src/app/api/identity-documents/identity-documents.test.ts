@@ -18,12 +18,15 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: vi.fn(),
   },
 }));
+vi.mock("@/repositories/identity.server", () => ({ identityRepository: { listDocumentsForUser: vi.fn() } }));
+vi.mock("@/lib/identity-document-pg", () => ({ serializeIdentityDocument: vi.fn(async (item) => ({ ...item, fileSize: Number(item.fileSize), downloadUrl: "https://signed/document" })) }));
 
 import { getActiveSession } from "@/lib/server-auth";
 import { validateUpload } from "@/lib/file-validation";
 import { prisma } from "@/lib/prisma";
 import { uploadStorageFile } from "@/lib/supabase/storage";
-import { POST } from "@/app/api/identity-documents/route";
+import { identityRepository } from "@/repositories/identity.server";
+import { GET, POST } from "@/app/api/identity-documents/route";
 
 const session = vi.mocked(getActiveSession);
 const db = prisma as unknown as {
@@ -50,11 +53,39 @@ beforeEach(() => {
   db.identity_documents.findFirst.mockResolvedValue(null);
   db.identity_documents.updateMany.mockResolvedValue({ count: 0 });
   db.identity_documents.create.mockResolvedValue(document);
+  vi.mocked(identityRepository.listDocumentsForUser).mockResolvedValue([document] as never);
   db.$transaction.mockImplementation(async (operation: (tx: unknown) => Promise<unknown>) => operation({ identity_documents: db.identity_documents }));
   vi.mocked(validateUpload).mockResolvedValue({ buffer: Buffer.from("document"), extension: "jpg", mimeType: "image/jpeg", fileSize: 12, sha256: "a".repeat(64), originalName: "frente.jpg" });
 });
 
 describe("identidad - documentos por lado", () => {
+  it("lista historial propio para un arrendador", async () => {
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(identityRepository.listDocumentsForUser).toHaveBeenCalledWith(landlord.sub);
+    await expect(response.json()).resolves.toMatchObject({ documents: [{ id: document.id, sha256: document.sha256 }] });
+  });
+
+  it("requiere sesión y bloquea al municipio al listar", async () => {
+    session.mockResolvedValue(null);
+    expect((await GET()).status).toBe(401);
+    session.mockResolvedValue({ ...landlord, role: "MUNICIPIO" });
+    expect((await GET()).status).toBe(403);
+  });
+
+  it("permite listar al arrendatario sin ampliar ownership", async () => {
+    session.mockResolvedValue({ ...landlord, role: "ARRENDATARIO", sub: "tenant-1" });
+    await GET();
+    expect(identityRepository.listDocumentsForUser).toHaveBeenCalledWith("tenant-1");
+  });
+
+  it("devuelve un error genérico sin detalles PostgreSQL", async () => {
+    vi.mocked(identityRepository.listDocumentsForUser).mockRejectedValue(new Error("SELECT * FROM identity_documents at internal-host"));
+    const response = await GET();
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "No se pudieron cargar los documentos" });
+  });
+
   it("acepta frente y reverso como documentos distintos", async () => {
     const first = await POST(uploadRequest("FRENTE"));
     const second = await POST(uploadRequest("REVERSO"));
