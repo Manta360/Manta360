@@ -29,6 +29,7 @@
     "db:test-contract-detail": "tsx scripts/test-test-postgres-contract-detail.ts",
     "db:test-contract-pdf": "tsx scripts/test-test-postgres-contract-pdf.ts",
     "db:test-contract-renewals": "tsx scripts/test-test-postgres-contract-renewals.ts",
+    "db:test-admin-stats": "tsx scripts/test-test-postgres-admin-stats.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
