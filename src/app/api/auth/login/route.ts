@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import { loginSchema, toPublicUser } from "@/lib/validations/auth";
 import { createSessionToken, setSessionCookie } from "@/lib/session";
 import { panelPathForRole } from "@/lib/roles";
+import { sessionUserRepository } from "@/repositories/session-user.server";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   }
 
   const { identifier, password } = parsed.data;
-  const user = await prisma.user.findFirst({ where: { OR: [{ email: identifier.toLowerCase() }, { nationalId: identifier }] } });
+  const user = await sessionUserRepository.findForLogin(identifier);
 
   if (!user) {
     return NextResponse.json(
