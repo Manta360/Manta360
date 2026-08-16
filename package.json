@@ -36,6 +36,7 @@
     "db:test-admin-properties": "tsx scripts/test-test-postgres-admin-properties.ts",
     "db:test-session-user": "tsx scripts/test-test-postgres-session-user.ts",
     "db:test-auth-me": "tsx scripts/test-test-postgres-auth-me.ts",
+    "storage:bootstrap-test": "tsx scripts/bootstrap-supabase-test-storage.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
