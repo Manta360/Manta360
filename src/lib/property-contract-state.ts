@@ -1,61 +1,16 @@
-import { PropertyStatus, Prisma } from "@prisma/client";
-import { activeContractStatuses } from "@/lib/contract-exclusivity";
+import type { PoolClient } from "pg";
 
-/**
- * Administrative states are intentional overrides. Contract transitions must
- * never erase maintenance or municipal disablement.
- */
-export function isAdministrativePropertyStatus(status: PropertyStatus) {
-  return status === PropertyStatus.MANTENIMIENTO || status === PropertyStatus.INHABILITADO;
+export function isAdministrativePropertyStatus(status: string) { return status === "MANTENIMIENTO" || status === "INHABILITADO"; }
+export async function propertyHasEffectiveContract(client: PoolClient, propertyId: string) { return (await client.query('SELECT 1 FROM public.contracts WHERE "propertyId" = $1 AND status IN (\'ACTIVO\',\'EN_RENOVACION\') LIMIT 1', [propertyId])).rowCount === 1; }
+export async function synchronizePropertyContractState(client: PoolClient, propertyId: string, now = new Date()) {
+  const current = await client.query<{ id: string; status: string }>('SELECT id,status FROM public.properties WHERE id = $1 FOR UPDATE', [propertyId]);
+  const property = current.rows[0]; if (!property || isAdministrativePropertyStatus(property.status)) return { property, changed: false };
+  const expected = await propertyHasEffectiveContract(client, propertyId) ? "OCUPADO" : "DISPONIBLE";
+  if (property.status === expected) return { property, changed: false };
+  const changed = await client.query('UPDATE public.properties SET status = $2::"PropertyStatus","updatedAt" = $3 WHERE id = $1 AND status IN (\'DISPONIBLE\',\'OCUPADO\')', [propertyId, expected, now]);
+  return { property, changed: changed.rowCount === 1 };
 }
-
-export async function propertyHasEffectiveContract(tx: Prisma.TransactionClient, propertyId: string) {
-  return Boolean(await tx.contracts.findFirst({
-    where: { propertyId, status: { in: [...activeContractStatuses] } },
-    select: { id: true },
-  }));
-}
-
-/**
- * Reconciles the operational property state from the effective contract set.
- * Only DISPONIBLE and OCUPADO are contract-managed; MANTENIMIENTO and
- * INHABILITADO remain explicit administrative decisions.
- */
-export async function synchronizePropertyContractState(
-  tx: Prisma.TransactionClient,
-  propertyId: string,
-  now = new Date(),
-) {
-  const property = await tx.properties.findUnique({
-    where: { id: propertyId },
-    select: { id: true, status: true },
-  });
-  if (!property || isAdministrativePropertyStatus(property.status)) {
-    return { property, changed: false };
-  }
-
-  const hasEffectiveContract = await propertyHasEffectiveContract(tx, propertyId);
-  const expectedStatus = hasEffectiveContract ? PropertyStatus.OCUPADO : PropertyStatus.DISPONIBLE;
-  if (property.status === expectedStatus) return { property, changed: false };
-
-  const result = await tx.properties.updateMany({
-    where: { id: propertyId, status: { in: [PropertyStatus.DISPONIBLE, PropertyStatus.OCUPADO] } },
-    data: { status: expectedStatus, updatedAt: now },
-  });
-  return { property, changed: result.count === 1 };
-}
-
-/**
- * Activation uses a conditional write to keep the availability decision and
- * the later contract activation in the same Serializable transaction.
- */
-export async function reservePropertyForContractActivation(
-  tx: Prisma.TransactionClient,
-  propertyId: string,
-  now = new Date(),
-) {
-  return tx.properties.updateMany({
-    where: { id: propertyId, status: PropertyStatus.DISPONIBLE, approved: true },
-    data: { status: PropertyStatus.OCUPADO, updatedAt: now },
-  });
+export async function reservePropertyForContractActivation(client: PoolClient, propertyId: string, now = new Date()) {
+  const result = await client.query('UPDATE public.properties SET status = \'OCUPADO\'::"PropertyStatus","updatedAt" = $2 WHERE id = $1 AND status = \'DISPONIBLE\'::"PropertyStatus" AND approved = true', [propertyId, now]);
+  return { count: result.rowCount ?? 0 };
 }

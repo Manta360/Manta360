@@ -10,7 +10,7 @@ export async function POST() {
   }
 
   try {
-    const finalized = await runContractTransaction((tx) => reconcileExpiredContracts(tx));
+    const finalized = await runContractTransaction((client) => reconcileExpiredContracts(client));
     return NextResponse.json({ finalized });
   } catch (error) {
     if (isContractTransactionConflict(error)) {

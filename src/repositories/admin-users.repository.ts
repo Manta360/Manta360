@@ -66,4 +66,12 @@ export class AdminUsersRepository {
     );
     return result.rows[0]!;
   }
+
+  async updateLandlord(id: string, data: Partial<Pick<AdminLandlordDetail, "fullName" | "email" | "phone" | "nationalId" | "active" | "disabledAt" | "disabledBy" | "disableReason">>): Promise<AdminLandlordDetail | null> {
+    const map: Record<string, string> = { fullName: "fullName", email: "email", phone: "phone", nationalId: "nationalId", active: "active", disabledAt: "disabledAt", disabledBy: "disabledBy", disableReason: "disableReason" };
+    const values: unknown[] = [id]; const sets = ['"updatedAt" = CURRENT_TIMESTAMP'];
+    for (const [key, column] of Object.entries(map)) if (data[key as keyof typeof data] !== undefined) { values.push(data[key as keyof typeof data]); sets.push(`"${column}" = $${values.length}`); }
+    const result = await this.executor.query<AdminLandlordDetail>(`UPDATE public.users SET ${sets.join(", ")} WHERE id=$1 AND role='ARRENDADOR'::"Role" RETURNING id,"fullName",email,phone,"nationalId",role,active,"disabledAt","disabledBy","disableReason","createdAt","updatedAt"`, values);
+    return result.rows[0] ?? null;
+  }
 }
