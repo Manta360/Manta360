@@ -5,6 +5,8 @@ vi.mock("@/lib/owned-property", () => ({
   ownedPropertyInclude: {},
   serializeOwnedProperty: vi.fn(async (property) => property),
 }));
+vi.mock("@/lib/owned-property-pg", () => ({ serializeMineProperty: vi.fn(async (property) => property) }));
+vi.mock("@/repositories/properties.server", () => ({ propertiesRepository: { listMineForLandlord: vi.fn() } }));
 vi.mock("@/lib/supabase/storage", () => ({
   PROPERTY_IMAGES_BUCKET: "property-images",
   removeStorageFile: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("@/lib/prisma", () => ({
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
 import { removeStorageFile } from "@/lib/supabase/storage";
+import { propertiesRepository } from "@/repositories/properties.server";
 import { GET as listMine } from "@/app/api/properties/mine/route";
 import { DELETE, GET, PATCH } from "@/app/api/properties/[propertyId]/route";
 
@@ -66,6 +69,7 @@ beforeEach(() => {
   session.mockResolvedValue(landlord);
   db.properties.findFirst.mockResolvedValue(property);
   db.properties.findMany.mockResolvedValue([property]);
+  vi.mocked(propertiesRepository.listMineForLandlord).mockResolvedValue([property] as never);
   db.properties.update.mockResolvedValue(property);
   db.properties.delete.mockResolvedValue(property);
   db.property_images.deleteMany.mockResolvedValue({ count: 0 });
@@ -79,16 +83,16 @@ beforeEach(() => {
 
 describe("KAN-40 - propiedades propias", () => {
   it("lista exclusivamente propiedades del Arrendador, incluidas las no públicas", async () => {
-    db.properties.findMany.mockResolvedValue([{ ...property, approved: false, status: "INHABILITADO" }]);
+    vi.mocked(propertiesRepository.listMineForLandlord).mockResolvedValue([{ ...property, approved: false, status: "INHABILITADO" }] as never);
     const response = await listMine();
     expect(response.status).toBe(200);
-    expect(db.properties.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { landlordId: landlord.sub } }));
+    expect(propertiesRepository.listMineForLandlord).toHaveBeenCalledWith(landlord.sub);
     await expect(response.json()).resolves.toMatchObject({ properties: [{ id: property.id, approved: false, status: "INHABILITADO" }] });
   });
 
   it("no mezcla propiedades de otro Arrendador en el listado", async () => {
     await listMine();
-    expect(db.properties.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { landlordId: landlord.sub } }));
+    expect(propertiesRepository.listMineForLandlord).toHaveBeenCalledWith(landlord.sub);
   });
 
   it.each(["ARRENDATARIO", "MUNICIPIO"] as const)("rechaza a %s en el listado privado", async (role) => {
