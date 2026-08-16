@@ -88,6 +88,12 @@ CREATE TABLE IF NOT EXISTS public.properties (
   CONSTRAINT properties_pkey PRIMARY KEY (id),
   CONSTRAINT properties_landlordId_fkey FOREIGN KEY ("landlordId") REFERENCES public.users(id),
   CONSTRAINT properties_createdby_fkey FOREIGN KEY ("createdBy") REFERENCES public.users(id) ON DELETE RESTRICT
+  , CONSTRAINT properties_title_not_blank_ck CHECK (length(btrim(title)) > 0)
+  , CONSTRAINT properties_monthly_rent_positive_ck CHECK ("monthlyRent" > 0)
+  , CONSTRAINT properties_bedrooms_positive_ck CHECK (bedrooms IS NULL OR bedrooms >= 1)
+  , CONSTRAINT properties_bathrooms_positive_ck CHECK (bathrooms IS NULL OR bathrooms >= 1)
+  , CONSTRAINT properties_latitude_range_ck CHECK (latitude IS NULL OR (latitude >= -90 AND latitude <= 90))
+  , CONSTRAINT properties_longitude_range_ck CHECK (longitude IS NULL OR (longitude >= -180 AND longitude <= 180))
 );
 
 CREATE TABLE IF NOT EXISTS public.service_catalog (

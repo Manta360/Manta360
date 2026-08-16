@@ -14,6 +14,7 @@
     "db:seed-municipio": "tsx scripts/seed-municipio.ts",
     "db:check-test": "tsx scripts/check-postgres-connection.ts",
     "db:bootstrap-test": "tsx scripts/bootstrap-test-postgres-schema.ts",
+    "db:apply-test-migrations": "tsx scripts/apply-test-postgres-migrations.ts",
     "db:verify-test": "tsx scripts/verify-test-postgres-schema.ts",
     "db:test-constraints": "tsx scripts/test-test-postgres-constraints.ts",
     "db:test-chat": "tsx scripts/test-test-postgres-chat.ts",
