@@ -1,5 +1,7 @@
 export { Alert } from "@/components/ui/alert";
 export { Badge } from "@/components/ui/badge";
+export { StatusBadge, statusLabel } from "@/components/ui/status-badge";
+export { SectionHeader, StatCard } from "@/components/ui/section";
 export { Button } from "@/components/ui/button";
 export { ConfirmationDialog, Dialog } from "@/components/ui/dialog";
 export { Input, Select, Textarea } from "@/components/ui/field";
