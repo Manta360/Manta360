@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
+vi.mock("@/repositories/contract-requests.server", () => ({
+  contractRequestsRepository: { listForSession: vi.fn() },
+  runContractRequestsTransaction: vi.fn(),
+}));
 
 import { POST as createRequest } from "@/app/api/contract-requests/route";
 import { POST as decideRequest } from "@/app/api/contract-requests/[id]/decision/route";
@@ -10,9 +14,15 @@ import { POST as municipalDecision } from "@/app/api/admin/contracts/[id]/decisi
 import { runContractTransaction } from "@/lib/contract-exclusivity";
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
+import { runContractRequestsTransaction } from "@/repositories/contract-requests.server";
 
 const session = vi.mocked(getActiveSession);
 const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn> };
+const requestRepository = {
+  propertyCanReceiveRequest: vi.fn(), isTenantIdentityReady: vi.fn(), hasPendingRequest: vi.fn(), createRequest: vi.fn(),
+  findForLandlordDecision: vi.fn(), setDecision: vi.fn(), hasEffectiveContract: vi.fn(), createPendingContract: vi.fn(),
+};
+const pgContracts = { reconcileExpiredContracts: vi.fn() };
 
 const transaction = {
   properties: { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -80,6 +90,16 @@ describe("KAN-43 - exclusividad contractual", () => {
     transaction.contracts.update.mockImplementation(async ({ data }) => ({ ...pendingMunicipalContract, ...data }));
     transaction.contracts.updateMany.mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation(async (operation: (tx: typeof transaction) => Promise<unknown>) => operation(transaction));
+    requestRepository.propertyCanReceiveRequest.mockResolvedValue(true);
+    requestRepository.isTenantIdentityReady.mockResolvedValue(true);
+    requestRepository.hasPendingRequest.mockResolvedValue(false);
+    requestRepository.createRequest.mockResolvedValue({ ...pendingRequest });
+    requestRepository.findForLandlordDecision.mockResolvedValue({ ...pendingRequest, propertyActive: true, propertyApproved: true, propertyStatus: "DISPONIBLE", monthlyRent: 650 });
+    requestRepository.setDecision.mockResolvedValue(pendingRequest);
+    requestRepository.hasEffectiveContract.mockResolvedValue(false);
+    requestRepository.createPendingContract.mockResolvedValue(undefined);
+    pgContracts.reconcileExpiredContracts.mockResolvedValue(0);
+    vi.mocked(runContractRequestsTransaction).mockImplementation(async (operation) => (operation as (requests: never, contracts: never) => unknown)(requestRepository as never, pgContracts as never));
   });
 
   it("permite iniciar el flujo para una propiedad disponible", async () => {
@@ -92,34 +112,29 @@ describe("KAN-43 - exclusividad contractual", () => {
     }));
 
     expect(response.status).toBe(201);
-    expect(transaction.contract_requests.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ propertyId: "property-1", tenantId: "tenant-1" }),
-    }));
+    expect(requestRepository.createRequest).toHaveBeenCalledWith(expect.objectContaining({ propertyId: "property-1", tenantId: "tenant-1" }));
   });
 
   it("rechaza una aceptación directa si ya existe un contrato vigente", async () => {
     session.mockResolvedValue({ sub: "landlord-1", email: "landlord@test.com", fullName: "Landlord", role: "ARRENDADOR" });
-    transaction.contracts.findFirst.mockResolvedValue({ id: "active-contract" });
+    requestRepository.hasEffectiveContract.mockResolvedValue(true);
 
     const response = await decideRequest(decisionRequest("APROBADO"), { params: Promise.resolve({ id: "request-1" }) });
 
     expect(response.status).toBe(409);
-    expect(transaction.contract_requests.update).not.toHaveBeenCalled();
-    expect(transaction.contracts.create).not.toHaveBeenCalled();
+    expect(requestRepository.setDecision).not.toHaveBeenCalled();
+    expect(requestRepository.createPendingContract).not.toHaveBeenCalled();
   });
 
   it("rechaza la aceptación si la propiedad dejó de estar disponible", async () => {
     session.mockResolvedValue({ sub: "landlord-1", email: "landlord@test.com", fullName: "Landlord", role: "ARRENDADOR" });
-    transaction.contract_requests.findUnique.mockResolvedValue({
-      ...pendingRequest,
-      properties: { ...availableProperty, status: "MANTENIMIENTO" },
-    });
+    requestRepository.findForLandlordDecision.mockResolvedValue({ ...pendingRequest, propertyActive: true, propertyApproved: true, propertyStatus: "MANTENIMIENTO", monthlyRent: 650 });
 
     const response = await decideRequest(decisionRequest("APROBADO"), { params: Promise.resolve({ id: "request-1" }) });
 
     expect(response.status).toBe(409);
-    expect(transaction.contract_requests.update).not.toHaveBeenCalled();
-    expect(transaction.contracts.create).not.toHaveBeenCalled();
+    expect(requestRepository.setDecision).not.toHaveBeenCalled();
+    expect(requestRepository.createPendingContract).not.toHaveBeenCalled();
   });
 
   it("activa un contrato y ocupa la propiedad en una sola transacción", async () => {

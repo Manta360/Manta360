@@ -57,4 +57,47 @@ export class ContractRequestsRepository {
     );
     return result.rows;
   }
+
+  async isTenantIdentityReady(userId: string): Promise<boolean> {
+    const result = await this.executor.query<{ documentType: string; side: string }>('SELECT "documentType",side FROM public.identity_documents WHERE "userId" = $1 AND "isCurrent" = true AND "verificationStatus" = \'VERIFICADO\'::"IdentityDocumentStatus"', [userId]);
+    const sides = new Set(result.rows.filter((document) => document.documentType === "CEDULA").map((document) => document.side));
+    return result.rows.some((document) => document.documentType === "PASAPORTE") || (sides.has("FRENTE") && sides.has("REVERSO"));
+  }
+
+  async propertyCanReceiveRequest(propertyId: string): Promise<boolean> {
+    const result = await this.executor.query<{ id: string }>('SELECT p.id FROM public.properties p JOIN public.users u ON u.id = p."landlordId" WHERE p.id = $1 AND p.approved = true AND p.status = \'DISPONIBLE\'::"PropertyStatus" AND u.active = true LIMIT 1', [propertyId]);
+    return result.rows.length === 1;
+  }
+
+  async hasPendingRequest(propertyId: string, tenantId: string): Promise<boolean> {
+    const result = await this.executor.query<{ id: string }>('SELECT id FROM public.contract_requests WHERE "propertyId" = $1 AND "tenantId" = $2 AND status = \'PENDIENTE\'::"RequestStatus" LIMIT 1', [propertyId, tenantId]);
+    return result.rows.length === 1;
+  }
+
+  async createRequest(input: { id: string; propertyId: string; tenantId: string; message: string | null; startDate: Date | null; endDate: Date | null }): Promise<ContractRequest> {
+    const result = await this.executor.query<ContractRequest>('INSERT INTO public.contract_requests (id,"propertyId","tenantId",message,"startDate","endDate","updatedAt") VALUES ($1,$2,$3,$4,$5,$6,CURRENT_TIMESTAMP) RETURNING id,"propertyId","tenantId",status,message,"startDate","endDate","createdAt","updatedAt"', [input.id, input.propertyId, input.tenantId, input.message, input.startDate, input.endDate]);
+    return result.rows[0]!;
+  }
+
+  async findForLandlordDecision(id: string, landlordId: string): Promise<(ContractRequest & { propertyActive: boolean; propertyApproved: boolean; propertyStatus: string; monthlyRent: string | number }) | null> {
+    const result = await this.executor.query<ContractRequest & { propertyActive: boolean; propertyApproved: boolean; propertyStatus: string; monthlyRent: string | number }>(
+      'SELECT r.id,r."propertyId",r."tenantId",r.status,r.message,r."startDate",r."endDate",r."createdAt",r."updatedAt",p.approved AS "propertyApproved",p.status AS "propertyStatus",p."monthlyRent" AS "monthlyRent",u.active AS "propertyActive" FROM public.contract_requests r JOIN public.properties p ON p.id = r."propertyId" JOIN public.users u ON u.id = p."landlordId" WHERE r.id = $1 AND p."landlordId" = $2 FOR UPDATE',
+      [id, landlordId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async setDecision(id: string, status: "APROBADO" | "RECHAZADO"): Promise<ContractRequest> {
+    const result = await this.executor.query<ContractRequest>('UPDATE public.contract_requests SET status = $2::"RequestStatus","updatedAt" = CURRENT_TIMESTAMP WHERE id = $1 RETURNING id,"propertyId","tenantId",status,message,"startDate","endDate","createdAt","updatedAt"', [id, status]);
+    return result.rows[0]!;
+  }
+
+  async hasEffectiveContract(propertyId: string): Promise<boolean> {
+    const result = await this.executor.query<{ id: string }>('SELECT id FROM public.contracts WHERE "propertyId" = $1 AND status IN (\'ACTIVO\',\'EN_RENOVACION\') LIMIT 1', [propertyId]);
+    return result.rows.length > 0;
+  }
+
+  async createPendingContract(input: { id: string; propertyId: string; tenantId: string; landlordId: string; startDate: Date; endDate: Date; monthlyRent: string | number }): Promise<void> {
+    await this.executor.query('INSERT INTO public.contracts (id,"propertyId","tenantId","landlordId","startDate","endDate",status,"monthlyRent",city,purpose,"updatedAt") VALUES ($1,$2,$3,$4,$5,$6,\'PENDIENTE_FIRMA\'::"ContractStatus",$7,\'Manta\',\'Vivienda\',CURRENT_TIMESTAMP)', [input.id, input.propertyId, input.tenantId, input.landlordId, input.startDate, input.endDate, input.monthlyRent]);
+  }
 }
