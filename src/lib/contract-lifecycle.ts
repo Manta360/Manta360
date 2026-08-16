@@ -1,5 +1,6 @@
-import { ContractStatus, Prisma, PropertyStatus } from "@prisma/client";
+import { ContractStatus, Prisma } from "@prisma/client";
 import { activeContractStatuses } from "@/lib/contract-exclusivity";
+import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 
 export const terminableContractStatuses = [
   ContractStatus.ACTIVO,
@@ -44,10 +45,7 @@ export async function reconcileExpiredContracts(
     });
     if (result.count !== 1) continue;
     finalized += 1;
-    await tx.properties.updateMany({
-      where: { id: contract.propertyId, status: PropertyStatus.OCUPADO },
-      data: { status: PropertyStatus.DISPONIBLE, updatedAt: now },
-    });
+    await synchronizePropertyContractState(tx, contract.propertyId, now);
   }
 
   return finalized;

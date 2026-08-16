@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
+import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 import { getActiveSession } from "@/lib/server-auth";
 
 export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -9,29 +10,39 @@ export async function PATCH(_request: Request, { params }: { params: Promise<{ i
   }
 
   const { id } = await params;
-  const existing = await prisma.properties.findUnique({ where: { id }, select: { id: true, status: true } });
-  if (!existing) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  if (existing.status !== "INHABILITADO") {
-    return NextResponse.json({ error: "La propiedad no está inhabilitada" }, { status: 409 });
+  try {
+    const result = await runContractTransaction(async (tx) => {
+      const existing = await tx.properties.findUnique({ where: { id }, select: { id: true, status: true } });
+      if (!existing) return { error: "Propiedad no encontrada", status: 404 };
+      if (existing.status !== "INHABILITADO") return { error: "La propiedad no esta inhabilitada", status: 409 };
+
+      const now = new Date();
+      await tx.properties.update({
+        where: { id },
+        data: {
+          status: "DISPONIBLE",
+          approved: false,
+          approvedAt: null,
+          approvedBy: null,
+          disabledAt: null,
+          disabledBy: null,
+          disableReason: null,
+          updatedAt: now,
+        },
+      });
+      await synchronizePropertyContractState(tx, id, now);
+      return { property: await tx.properties.findUnique({ where: { id } }) };
+    });
+    if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
+
+    return NextResponse.json({
+      property: { ...result.property!, monthlyRent: Number(result.property!.monthlyRent) },
+    });
+  } catch (error) {
+    if (isContractTransactionConflict(error)) {
+      return NextResponse.json({ error: "La propiedad cambio durante la rehabilitacion" }, { status: 409 });
+    }
+    console.error("property enable error", error);
+    return NextResponse.json({ error: "No se pudo rehabilitar la propiedad" }, { status: 500 });
   }
-
-  const now = new Date();
-  const property = await prisma.properties.update({
-    where: { id },
-    data: {
-      // Vuelve a "Pendiente" de revisión municipal (approved=false + DISPONIBLE)
-      status: "DISPONIBLE",
-      approved: false,
-      approvedAt: null,
-      approvedBy: null,
-      disabledAt: null,
-      disabledBy: null,
-      disableReason: null,
-      updatedAt: now,
-    },
-  });
-
-  return NextResponse.json({
-    property: { ...property, monthlyRent: Number(property.monthlyRent) },
-  });
 }

@@ -2,6 +2,7 @@ import { ContractStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
 import { isTerminableContractStatus, reconcileExpiredContracts } from "@/lib/contract-lifecycle";
+import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 import { getActiveSession } from "@/lib/server-auth";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -36,10 +37,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       });
       if (finalized.count !== 1) return { error: "El contrato cambio durante la finalizacion", status: 409 };
 
-      await tx.properties.updateMany({
-        where: { id: contract.propertyId, status: "OCUPADO" },
-        data: { status: "DISPONIBLE", updatedAt: now },
-      });
+      await synchronizePropertyContractState(tx, contract.propertyId, now);
       return { finalized: true };
     });
 

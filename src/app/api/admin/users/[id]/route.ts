@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
+import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
+import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 import { toPublicUser } from "@/lib/validations/auth";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -127,11 +129,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    const now = new Date();
-    const disabling = update.active === false;
-    const reason = update.active === false ? update.reason : null;
-    const [landlord] = await prisma.$transaction([
-      prisma.user.update({
+    const landlord = await runContractTransaction(async (tx) => {
+      const now = new Date();
+      const disabling = update.active === false;
+      const reason = disabling ? update.reason : null;
+      const landlord = await tx.user.update({
         where: { id },
         data: {
           active: update.active,
@@ -140,43 +142,53 @@ export async function PATCH(request: Request, context: RouteContext) {
           disableReason: reason,
         },
         select: landlordSelect,
-      }),
-      ...(disabling
-        ? [
-            prisma.properties.updateMany({
-              where: { landlordId: id },
-              data: {
-                status: "INHABILITADO",
-                approved: false,
-                approvedAt: null,
-                approvedBy: null,
-                disabledAt: now,
-                disabledBy: session.sub,
-                disableReason: reason,
-                updatedAt: now,
-              },
-            }),
-          ]
-        : [
-            prisma.properties.updateMany({
-              where: { landlordId: id, status: "INHABILITADO" },
-              data: {
-                status: "DISPONIBLE",
-                approved: false,
-                approvedAt: null,
-                approvedBy: null,
-                disabledAt: null,
-                disabledBy: null,
-                disableReason: null,
-                updatedAt: now,
-              },
-            }),
-          ]),
-    ]);
+      });
+
+      if (disabling) {
+        await tx.properties.updateMany({
+          where: { landlordId: id },
+          data: {
+            status: "INHABILITADO",
+            approved: false,
+            approvedAt: null,
+            approvedBy: null,
+            disabledAt: now,
+            disabledBy: session.sub,
+            disableReason: reason,
+            updatedAt: now,
+          },
+        });
+      } else {
+        const properties = await tx.properties.findMany({
+          where: { landlordId: id, status: "INHABILITADO" },
+          select: { id: true },
+        });
+        await tx.properties.updateMany({
+          where: { landlordId: id, status: "INHABILITADO" },
+          data: {
+            status: "DISPONIBLE",
+            approved: false,
+            approvedAt: null,
+            approvedBy: null,
+            disabledAt: null,
+            disabledBy: null,
+            disableReason: null,
+            updatedAt: now,
+          },
+        });
+        for (const property of properties) {
+          await synchronizePropertyContractState(tx, property.id, now);
+        }
+      }
+      return landlord;
+    });
 
     const serialized = serializeLandlord(landlord);
     return NextResponse.json({ user: serialized, landlord: serialized });
   } catch (error) {
+    if (isContractTransactionConflict(error)) {
+      return NextResponse.json({ error: "El arrendador cambio durante la actualizacion" }, { status: 409 });
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return NextResponse.json({ error: "Ya existe un usuario con ese correo o cédula" }, { status: 409 });
     }
