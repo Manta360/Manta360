@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import "./globals.css";
 
 const fontFallbacks = {
-  "--font-manrope": "Arial, Helvetica, sans-serif",
+  "--font-manrope": "Aptos, 'Segoe UI', Arial, sans-serif",
   "--font-fraunces": "Georgia, 'Times New Roman', serif",
 } as CSSProperties;
 

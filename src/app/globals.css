@@ -15,6 +15,7 @@
   --foreground: #102a43;
   --surface: #ffffff;
   --surface-subtle: #eef4f8;
+  --surface-raised: #ffffff;
   --canvas: var(--background);
   --muted: #526273;
   --muted-foreground: #62758a;
@@ -51,6 +52,9 @@
   --shadow-md: 0 8px 24px rgb(16 42 67 / 10%);
   --shadow-lg: 0 20px 45px rgb(16 42 67 / 14%);
   --focus-ring: 0 0 0 4px rgb(0 163 224 / 24%);
+
+  --font-ui: var(--font-manrope), "Aptos", "Segoe UI", sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
 }
 
 @theme inline {
@@ -65,6 +69,7 @@
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
   --color-surface-subtle: var(--surface-subtle);
+  --color-surface-raised: var(--surface-raised);
   --color-border: var(--border);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
@@ -90,7 +95,7 @@ html, body { margin: 0; min-height: 100%; }
 body {
   background: var(--canvas);
   color: var(--foreground);
-  font-family: var(--font-manrope), Arial, sans-serif;
+  font-family: var(--font-ui);
 }
 a { color: inherit; text-decoration: none; }
 input, select, button, textarea { font: inherit; }
