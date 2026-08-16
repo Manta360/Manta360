@@ -12,4 +12,13 @@ describe("IdentityRepository", () => {
     expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("passwordHash"), ["user-a"]);
     expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("reviewedBy"), ["user-a"]);
   });
+
+  it("lista revisión municipal con status parametrizado y usuarios públicos explícitos", async () => {
+    const executor = { query: vi.fn().mockResolvedValue({ rows: [] }) } as unknown as IdentitySqlExecutor;
+    const repository = new IdentityRepository(executor);
+    await repository.listReviewDocuments("PENDIENTE");
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('d."verificationStatus" = $1'), ["PENDIENTE"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY d."verificationStatus" ASC, d."uploadedAt" DESC'), ["PENDIENTE"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("passwordHash"), ["PENDIENTE"]);
+  });
 });
