@@ -92,6 +92,8 @@ model contracts {
   municipalReviewedAt               DateTime?
   municipalReviewedBy               String?
   municipalReviewNotes              String?
+  endedAt                           DateTime?
+  endedBy                           String?
   createdAt                         DateTime           @default(now())
   updatedAt                         DateTime
   incident_reports                  incident_reports[]

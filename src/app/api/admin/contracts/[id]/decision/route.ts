@@ -5,6 +5,7 @@ import {
   isContractTransactionConflict,
   runContractTransaction,
 } from "@/lib/contract-exclusivity";
+import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
 import { getActiveSession } from "@/lib/server-auth";
 
 const decisionSchema = z.object({
@@ -24,6 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const result = await runContractTransaction(async (tx) => {
+      await reconcileExpiredContracts(tx);
       const contract = await tx.contracts.findUnique({ where: { id } });
       if (!contract) return { error: "Contrato no encontrado", status: 404 };
       if (contract.status !== "PENDIENTE_MUNICIPIO") {
