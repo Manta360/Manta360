@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
 vi.mock("@/repositories/identity.server", () => ({ identityRepository: { listReviewDocuments: vi.fn() }, runIdentityTransaction: vi.fn() }));
-vi.mock("@/lib/identity-review-pg", () => ({ serializeReviewIdentityDocument: vi.fn(async ({ passwordHash: _passwordHash, ...document }) => document) }));
+vi.mock("@/lib/identity-review-pg", () => ({ serializeReviewIdentityDocument: vi.fn(async (item) => { const document = { ...item }; delete document.passwordHash; return document; }) }));
 import { getActiveSession } from "@/lib/server-auth";
 import { identityRepository } from "@/repositories/identity.server";
 import { GET } from "@/app/api/review/identity-documents/route";
