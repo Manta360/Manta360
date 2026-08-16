@@ -171,6 +171,30 @@ export class ContractsRepository {
     };
   }
 
+  async updatePreparation(id: string, fields: Record<string, unknown>): Promise<ContractListItem | null> {
+    const columns = new Set(["city", "province", "canton", "parish", "neighborhood", "street", "houseNumber", "intersection", "purpose", "paymentMethod", "monthlyRent", "depositAmount", "startDate", "endDate"]);
+    const values: unknown[] = [id];
+    const sets: string[] = ['"updatedAt" = CURRENT_TIMESTAMP'];
+    for (const [field, value] of Object.entries(fields)) {
+      if (value === undefined || !columns.has(field)) continue;
+      values.push(value);
+      sets.push(`"${field}" = $${values.length}`);
+    }
+    const result = await this.executor.query<ContractListItem>(`UPDATE public.contracts SET ${sets.join(", ")} WHERE id = $1 AND status = 'PENDIENTE_FIRMA'::"ContractStatus" RETURNING id,"propertyId","tenantId","landlordId","startDate","endDate",status,"monthlyRent",city,province,canton,parish,neighborhood,street,"houseNumber",intersection,purpose,"depositAmount","paymentMethod","landlordSignedAt","tenantSignedAt","municipalReviewedAt","municipalReviewedBy","municipalReviewNotes","endedAt","endedBy","createdAt","updatedAt"`, values);
+    return result.rows[0] ?? null;
+  }
+
+  async signPendingContract(id: string, userId: string): Promise<{ tenantSignedAt: Date | null; landlordSignedAt: Date | null } | null> {
+    const result = await this.executor.query<{ tenantId: string; landlordId: string; status: string; tenantSignedAt: Date | null; landlordSignedAt: Date | null }>('SELECT "tenantId","landlordId",status,"tenantSignedAt","landlordSignedAt" FROM public.contracts WHERE id = $1 FOR UPDATE', [id]);
+    const contract = result.rows[0];
+    if (!contract || contract.status !== "PENDIENTE_FIRMA" || (contract.tenantId !== userId && contract.landlordId !== userId)) return null;
+    const column = contract.tenantId === userId ? '"tenantSignedAt"' : '"landlordSignedAt"';
+    const updated = await this.executor.query<{ tenantSignedAt: Date | null; landlordSignedAt: Date | null }>(`UPDATE public.contracts SET ${column} = CURRENT_TIMESTAMP,"updatedAt" = CURRENT_TIMESTAMP WHERE id = $1 RETURNING "tenantSignedAt","landlordSignedAt"`, [id]);
+    const signed = updated.rows[0]!;
+    if (signed.tenantSignedAt && signed.landlordSignedAt) await this.executor.query('UPDATE public.contracts SET status = \'PENDIENTE_MUNICIPIO\'::"ContractStatus","updatedAt" = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+    return signed;
+  }
+
   async reconcileExpiredContracts(now: Date): Promise<number> {
     const expired = await this.executor.query<ExpiredContract>(
       'SELECT id, "propertyId" FROM public.contracts WHERE status IN (\'ACTIVO\', \'EN_RENOVACION\') AND "endDate" < $1',
