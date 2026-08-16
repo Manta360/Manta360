@@ -13,6 +13,7 @@
     "db:push": "prisma db push",
     "db:seed-municipio": "tsx scripts/seed-municipio.ts",
     "db:check-test": "tsx scripts/check-postgres-connection.ts",
+    "db:check-app": "tsx scripts/check-app-postgres-connection.ts",
     "db:bootstrap-test": "tsx scripts/bootstrap-test-postgres-schema.ts",
     "db:apply-test-migrations": "tsx scripts/apply-test-postgres-migrations.ts",
     "db:verify-test": "tsx scripts/verify-test-postgres-schema.ts",
