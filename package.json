@@ -17,6 +17,7 @@
     "db:verify-test": "tsx scripts/verify-test-postgres-schema.ts",
     "db:test-constraints": "tsx scripts/test-test-postgres-constraints.ts",
     "db:test-chat": "tsx scripts/test-test-postgres-chat.ts",
+    "db:test-dashboard": "tsx scripts/test-test-postgres-dashboard.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
