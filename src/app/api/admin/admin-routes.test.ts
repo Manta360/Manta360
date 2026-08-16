@@ -26,8 +26,13 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
+vi.mock("@/repositories/admin-users.server", () => ({
+  adminUsersRepository: { listLandlords: vi.fn() },
+}));
+
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
+import { adminUsersRepository } from "@/repositories/admin-users.server";
 import { PATCH as disableProperty } from "@/app/api/admin/properties/[id]/disable/route";
 import { GET as listLandlords, POST as createLandlord } from "@/app/api/admin/users/route";
 import {
@@ -55,6 +60,7 @@ type PrismaMocks = {
   $transaction: ReturnType<typeof vi.fn>;
 };
 const mockedPrisma = prisma as unknown as PrismaMocks;
+const mockedAdminUsersRepository = vi.mocked(adminUsersRepository);
 
 describe("KAN-28 — permisos cruzados admin", () => {
   beforeEach(() => {
@@ -350,16 +356,12 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
   });
 
   it("lista exclusivamente arrendadores", async () => {
-    mockedPrisma.user.findMany = vi.fn().mockResolvedValue([
-      { ...landlord, _count: { properties_properties_landlordIdTousers: 1 } },
-    ]);
+    mockedAdminUsersRepository.listLandlords.mockResolvedValue([{ ...landlord, propertiesCount: 1 }]);
 
     const response = await listLandlords();
 
     expect(response.status).toBe(200);
-    expect(mockedPrisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { role: "ARRENDADOR" },
-    }));
+    expect(mockedAdminUsersRepository.listLandlords).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({ landlords: [{ id: landlord.id, role: "ARRENDADOR" }] });
   });
 

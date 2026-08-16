@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
 import { getActiveSession } from "@/lib/server-auth";
 import { registerSchema, toPublicUser } from "@/lib/validations/auth";
+import { adminUsersRepository } from "@/repositories/admin-users.server";
 
 const landlordCreateSchema = registerSchema.extend({
   role: z.literal("ARRENDADOR"),
@@ -25,7 +26,22 @@ const landlordSelect = {
   updatedAt: true,
 } as const;
 
-function serializeLandlord(user: Prisma.UserGetPayload<{ select: typeof landlordSelect }>) {
+type LandlordForSerialization = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  nationalId: string | null;
+  role: string;
+  active: boolean;
+  disabledAt: Date | null;
+  disabledBy: string | null;
+  disableReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function serializeLandlord(user: LandlordForSerialization) {
   return {
     ...toPublicUser(user),
     updatedAt: user.updatedAt.toISOString(),
@@ -47,21 +63,13 @@ export async function GET() {
     return NextResponse.json({ error: "Acceso exclusivo del Municipio" }, { status: 403 });
   }
 
-  const landlords = await prisma.user.findMany({
-    where: { role: "ARRENDADOR" },
-    select: {
-      ...landlordSelect,
-      _count: { select: { properties_properties_landlordIdTousers: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  return NextResponse.json({
-    landlords: landlords.map(({ _count, ...landlord }) => ({
-      ...serializeLandlord(landlord),
-      propertiesCount: _count.properties_properties_landlordIdTousers,
-    })),
-  });
+  try {
+    const landlords = await adminUsersRepository.listLandlords();
+    return NextResponse.json({ landlords: landlords.map(({ propertiesCount, ...landlord }) => ({ ...serializeLandlord(landlord), propertiesCount })) });
+  } catch (error) {
+    console.error("admin landlord list error", error);
+    return NextResponse.json({ error: "No se pudieron obtener los arrendadores" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
