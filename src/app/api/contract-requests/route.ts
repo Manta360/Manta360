@@ -5,8 +5,13 @@ import { isContractTransactionConflict, runContractTransaction } from "@/lib/con
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
 import { contractUserSelect, toContractUser } from "@/lib/contract-user";
+import { contractDateFields, hasValidProvidedContractDateRange } from "@/lib/temporal-state-validation";
 
-const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), startDate: z.string().datetime().optional(), endDate: z.string().datetime().optional() });
+const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), ...contractDateFields }).superRefine((data, context) => {
+  if (!hasValidProvidedContractDateRange(data.startDate, data.endDate)) {
+    context.addIssue({ code: "custom", path: ["endDate"], message: "La fecha final debe ser posterior a la fecha inicial" });
+  }
+});
 
 export async function GET() {
   const session = await getActiveSession();
