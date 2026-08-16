@@ -6,6 +6,10 @@ import {
   runContractTransaction,
 } from "@/lib/contract-exclusivity";
 import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
+import {
+  reservePropertyForContractActivation,
+  synchronizePropertyContractState,
+} from "@/lib/property-contract-state";
 import { getActiveSession } from "@/lib/server-auth";
 
 const decisionSchema = z.object({
@@ -67,10 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       });
       if (activeContract) return { error: "La propiedad ya tiene un contrato vigente", status: 409 };
 
-      const reservedProperty = await tx.properties.updateMany({
-        where: { id: property.id, status: "DISPONIBLE", approved: true },
-        data: { status: "OCUPADO", updatedAt: now },
-      });
+      const reservedProperty = await reservePropertyForContractActivation(tx, property.id, now);
       if (reservedProperty.count !== 1) {
         return { error: "La disponibilidad de la propiedad cambió durante la revisión", status: 409 };
       }
@@ -85,6 +86,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           updatedAt: now,
         },
       });
+      await synchronizePropertyContractState(tx, contract.propertyId, now);
       await tx.contract_requests.updateMany({
         where: { propertyId: contract.propertyId, status: "PENDIENTE" },
         data: { status: "RECHAZADO", updatedAt: now },

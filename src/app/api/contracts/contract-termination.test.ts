@@ -13,8 +13,8 @@ const session = vi.mocked(getActiveSession);
 const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn> };
 
 const transaction = {
-  contracts: { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
-  properties: { updateMany: vi.fn() },
+  contracts: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
+  properties: { findUnique: vi.fn(), updateMany: vi.fn() },
 };
 
 const activeContract = {
@@ -33,8 +33,10 @@ describe("KAN-46 - terminacion y expiracion contractual", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     transaction.contracts.findMany.mockResolvedValue([]);
+    transaction.contracts.findFirst.mockResolvedValue(null);
     transaction.contracts.findUnique.mockResolvedValue(activeContract);
     transaction.contracts.updateMany.mockResolvedValue({ count: 1 });
+    transaction.properties.findUnique.mockResolvedValue({ id: "property-1", status: "OCUPADO" });
     transaction.properties.updateMany.mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation(async (operation: (tx: typeof transaction) => Promise<unknown>) => operation(transaction));
   });
@@ -51,7 +53,7 @@ describe("KAN-46 - terminacion y expiracion contractual", () => {
       data: expect.objectContaining({ status: "FINALIZADO", endedBy: actor.sub }),
     }));
     expect(transaction.properties.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "property-1", status: "OCUPADO" },
+      where: { id: "property-1", status: { in: ["DISPONIBLE", "OCUPADO"] } },
       data: expect.objectContaining({ status: "DISPONIBLE" }),
     }));
   });

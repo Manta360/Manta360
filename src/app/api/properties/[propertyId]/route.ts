@@ -9,6 +9,8 @@ import {
   uniquePropertyLabels,
 } from "@/lib/property-validation";
 import { PROPERTY_IMAGES_BUCKET, removeStorageFile } from "@/lib/supabase/storage";
+import { activeContractStatuses, isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
+import { propertyHasEffectiveContract } from "@/lib/property-contract-state";
 
 type RouteContext = { params: Promise<{ propertyId: string }> };
 
@@ -87,14 +89,25 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
       if (data.status === property.status) return NextResponse.json({ error: "La propiedad ya tiene ese estado" }, { status: 409 });
 
-      const activeContracts = await prisma.contracts.count({ where: { propertyId, status: "ACTIVO" } });
+      const activeContracts = await prisma.contracts.count({
+        where: { propertyId, status: { in: [...activeContractStatuses] } },
+      });
       if (activeContracts > 0) return NextResponse.json({ error: "No puedes cambiar el estado mientras exista un contrato activo" }, { status: 409 });
 
-      const updated = await prisma.properties.update({
-        where: { id: property.id },
-        data: { status: data.status as PropertyStatus, updatedAt: new Date() },
-        include: ownedPropertyInclude,
+      const updated = await runContractTransaction(async (tx) => {
+        const current = await tx.properties.findFirst({
+          where: { id: property.id, landlordId: authorization.session.sub },
+          select: { id: true, status: true },
+        });
+        if (!current || !landlordStatuses.has(current.status) || current.status === data.status) return null;
+        if (await propertyHasEffectiveContract(tx, property.id)) return null;
+        return tx.properties.update({
+          where: { id: property.id },
+          data: { status: data.status as PropertyStatus, updatedAt: new Date() },
+          include: ownedPropertyInclude,
+        });
       });
+      if (!updated) return NextResponse.json({ error: "No puedes cambiar el estado mientras exista un contrato efectivo" }, { status: 409 });
       return NextResponse.json({ property: await serializeOwnedProperty(updated) });
     }
 
@@ -127,6 +140,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     });
     return NextResponse.json({ property: await serializeOwnedProperty(updated) });
   } catch (error) {
+    if (isContractTransactionConflict(error)) {
+      return NextResponse.json({ error: "La propiedad cambio durante la actualizacion" }, { status: 409 });
+    }
     console.error("owned property update error", error);
     return NextResponse.json({ error: "No se pudo actualizar la propiedad" }, { status: 500 });
   }
@@ -146,7 +162,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const [activeContracts, contracts, requests, incidents, messages] = await Promise.all([
-    prisma.contracts.count({ where: { propertyId, status: "ACTIVO" } }),
+    prisma.contracts.count({ where: { propertyId, status: { in: [...activeContractStatuses] } } }),
     prisma.contracts.count({ where: { propertyId } }),
     prisma.contract_requests.count({ where: { propertyId } }),
     prisma.incident_reports.count({ where: { propertyId } }),

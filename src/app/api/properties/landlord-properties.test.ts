@@ -51,7 +51,8 @@ const request = (body: unknown) => new Request(`http://localhost/api/properties/
 function transactionMock() {
   const tx = {
     service_catalog: { upsert: vi.fn() }, amenity_catalog: { upsert: vi.fn() },
-    properties: { update: vi.fn().mockResolvedValue(property) },
+    properties: { findFirst: db.properties.findFirst, update: db.properties.update },
+    contracts: { findFirst: vi.fn().mockResolvedValue(null) },
   };
   db.$transaction.mockImplementation(async (operation: unknown) => {
     if (typeof operation === "function") return operation(tx);

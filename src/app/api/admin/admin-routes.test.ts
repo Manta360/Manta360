@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({
       update: vi.fn(),
       count: vi.fn(),
     },
-    contracts: { count: vi.fn() },
+    contracts: { count: vi.fn(), findFirst: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
@@ -39,8 +39,12 @@ const mockedSession = vi.mocked(getActiveSession);
 type PrismaMocks = {
   properties: {
     findUnique: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
+  };
+  contracts: {
+    findFirst: ReturnType<typeof vi.fn>;
   };
   user: {
     findMany: ReturnType<typeof vi.fn>;
@@ -326,7 +330,8 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
     mockedPrisma.user.findFirst.mockResolvedValue(landlord as never);
     mockedPrisma.user.update.mockResolvedValue({ ...landlord, active: false } as never);
     mockedPrisma.properties.updateMany.mockResolvedValue({ count: 2 } as never);
-    mockedPrisma.$transaction.mockImplementation(async (operations: unknown) => Promise.all(operations as unknown[]) as never);
+    mockedPrisma.$transaction.mockImplementation(async (operation: unknown) =>
+      typeof operation === "function" ? operation(mockedPrisma) : Promise.all(operation as unknown[]) as never);
 
     const response = await updateLandlord(
       new Request("http://localhost/api/admin/users/landlord-1", {
@@ -362,7 +367,10 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
     mockedPrisma.user.findFirst.mockResolvedValue({ ...landlord, active: false } as never);
     mockedPrisma.user.update.mockResolvedValue(landlord as never);
     mockedPrisma.properties.updateMany.mockResolvedValue({ count: 2 } as never);
-    mockedPrisma.$transaction.mockImplementation(async (operations: unknown) => Promise.all(operations as unknown[]) as never);
+    mockedPrisma.properties.findMany.mockResolvedValue([] as never);
+    mockedPrisma.contracts.findFirst.mockResolvedValue(null);
+    mockedPrisma.$transaction.mockImplementation(async (operation: unknown) =>
+      typeof operation === "function" ? operation(mockedPrisma) : Promise.all(operation as unknown[]) as never);
 
     const response = await updateLandlord(
       new Request("http://localhost/api/admin/users/landlord-1", {
