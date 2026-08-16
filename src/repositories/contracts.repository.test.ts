@@ -22,4 +22,16 @@ describe("ContractsRepository", () => {
     expect(sql).toContain('"endDate" < $1');
     expect(sql).not.toContain("passwordHash");
   });
+
+  it("finds a detail by its parameterized ID with the full historical property projection", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    await new ContractsRepository({ query }).findById("contract-1");
+    const sql = query.mock.calls[0][0] as string;
+    expect(query.mock.calls[0][1]).toEqual(["contract-1"]);
+    expect(sql).toContain("WHERE c.id = $1");
+    expect(sql).toContain('p."disableReason" AS "detailPropertyDisableReason"');
+    expect(sql).toContain("'nationalId', tenant.\"nationalId\"");
+    expect(sql).not.toContain("passwordHash");
+    expect(sql).not.toContain("users.*");
+  });
 });
