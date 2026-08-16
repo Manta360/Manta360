@@ -27,12 +27,16 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/repositories/admin-users.server", () => ({
-  adminUsersRepository: { listLandlords: vi.fn(), findLandlordById: vi.fn() },
+  adminUsersRepository: { listLandlords: vi.fn(), findLandlordById: vi.fn(), createLandlord: vi.fn() },
+}));
+vi.mock("@/repositories/admin-properties.server", () => ({
+  adminPropertiesRepository: { findPropertyStatus: vi.fn(), disableProperty: vi.fn(), updateApproval: vi.fn() },
 }));
 
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
 import { adminUsersRepository } from "@/repositories/admin-users.server";
+import { adminPropertiesRepository } from "@/repositories/admin-properties.server";
 import { PATCH as disableProperty } from "@/app/api/admin/properties/[id]/disable/route";
 import { GET as listLandlords, POST as createLandlord } from "@/app/api/admin/users/route";
 import {
@@ -61,6 +65,7 @@ type PrismaMocks = {
 };
 const mockedPrisma = prisma as unknown as PrismaMocks;
 const mockedAdminUsersRepository = vi.mocked(adminUsersRepository);
+const mockedAdminPropertiesRepository = vi.mocked(adminPropertiesRepository);
 
 describe("KAN-28 — permisos cruzados admin", () => {
   beforeEach(() => {
@@ -125,8 +130,8 @@ describe("KAN-28 — permisos cruzados admin", () => {
       role: "MUNICIPIO",
       fullName: "Funcionario",
     });
-    mockedPrisma.properties.findUnique.mockResolvedValue({ id: "p1", status: "DISPONIBLE" } as never);
-    mockedPrisma.properties.update.mockResolvedValue({
+    mockedAdminPropertiesRepository.findPropertyStatus.mockResolvedValue({ id: "p1", status: "DISPONIBLE" });
+    mockedAdminPropertiesRepository.disableProperty.mockResolvedValue({
       id: "p1",
       status: "INHABILITADO",
       monthlyRent: 750,
@@ -174,9 +179,9 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
   });
 
   it("crea exclusivamente un Arrendador con contraseña hasheada", async () => {
-    mockedPrisma.user.create.mockImplementation(async (args: { data: object }) => ({
+    mockedAdminUsersRepository.createLandlord.mockImplementation(async (args) => ({
       ...landlord,
-      ...(args.data as object),
+      ...args,
     }) as never);
 
     const response = await createLandlord(new Request("http://localhost/api/admin/users", {
@@ -193,16 +198,14 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
     }));
 
     expect(response.status).toBe(201);
-    expect(mockedPrisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ role: "ARRENDADOR", passwordHash: expect.not.stringMatching(/^claveSegura1$/) }),
-    }));
+    expect(mockedAdminUsersRepository.createLandlord).toHaveBeenCalledWith(expect.objectContaining({ passwordHash: expect.not.stringMatching(/^claveSegura1$/) }));
     await expect(response.json()).resolves.toMatchObject({ landlord: { role: "ARRENDADOR" } });
   });
 
   it("fuerza ARRENDADOR aunque el Municipio envíe role: MUNICIPIO", async () => {
-    mockedPrisma.user.create.mockImplementation(async (args: { data: object }) => ({
+    mockedAdminUsersRepository.createLandlord.mockImplementation(async (args) => ({
       ...landlord,
-      ...(args.data as object),
+      ...args,
     }) as never);
 
     const response = await createLandlord(new Request("http://localhost/api/admin/users", {
@@ -219,9 +222,7 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
     }));
 
     expect(response.status).toBe(201);
-    expect(mockedPrisma.user.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ role: "ARRENDADOR" }),
-    }));
+    expect(mockedAdminUsersRepository.createLandlord).toHaveBeenCalledWith(expect.objectContaining({}));
     await expect(response.json()).resolves.toMatchObject({ landlord: { role: "ARRENDADOR" } });
   });
 

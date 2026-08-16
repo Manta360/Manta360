@@ -169,4 +169,25 @@ export class AdminPropertiesRepository {
       },
     };
   }
+
+  async updateApproval(id: string, approved: boolean, approvedBy: string | null, updatedAt: Date): Promise<AdminProperty | null> {
+    const result = await this.executor.query<AdminProperty>(
+      'UPDATE public.properties SET approved = $2,"approvedAt" = $3,"approvedBy" = $4,"updatedAt" = $5 WHERE id = $1 RETURNING id,"landlordId",title,address,"monthlyRent",status,"createdAt","updatedAt",description,bedrooms,bathrooms,latitude,longitude,"createdBy",approved,"approvedAt","approvedBy","disabledAt","disabledBy","disableReason"',
+      [id, approved, approved ? updatedAt : null, approved ? approvedBy : null, updatedAt],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  async findPropertyStatus(id: string): Promise<{ id: string; status: string } | null> {
+    const result = await this.executor.query<{ id: string; status: string }>('SELECT id,status FROM public.properties WHERE id = $1', [id]);
+    return result.rows[0] ?? null;
+  }
+
+  async disableProperty(id: string, disabledBy: string, reason: string, updatedAt: Date): Promise<AdminProperty | null> {
+    const result = await this.executor.query<AdminProperty>(
+      'UPDATE public.properties SET status = $2,approved = false,"approvedAt" = NULL,"approvedBy" = NULL,"disabledAt" = $3,"disabledBy" = $4,"disableReason" = $5,"updatedAt" = $3 WHERE id = $1 RETURNING id,"landlordId",title,address,"monthlyRent",status,"createdAt","updatedAt",description,bedrooms,bathrooms,latitude,longitude,"createdBy",approved,"approvedAt","approvedBy","disabledAt","disabledBy","disableReason"',
+      [id, "INHABILITADO", updatedAt, disabledBy, reason],
+    );
+    return result.rows[0] ?? null;
+  }
 }

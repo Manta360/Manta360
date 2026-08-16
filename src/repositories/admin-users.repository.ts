@@ -17,6 +17,7 @@ export type AdminLandlord = {
 };
 
 export type AdminLandlordDetail = Omit<AdminLandlord, "propertiesCount">;
+export type NewAdminLandlord = Omit<AdminLandlordDetail, "active" | "disabledAt" | "disabledBy" | "disableReason" | "createdAt" | "updatedAt">;
 
 type AdminLandlordRow = Omit<AdminLandlord, "propertiesCount"> & { propertiesCount: string | number };
 
@@ -56,5 +57,13 @@ export class AdminUsersRepository {
   async findLandlordById(id: string): Promise<AdminLandlordDetail | null> {
     const result = await this.executor.query<AdminLandlordDetail>(FIND_LANDLORD_BY_ID_SQL, [id]);
     return result.rows[0] ?? null;
+  }
+
+  async createLandlord(input: { id: string; fullName: string; email: string; phone: string; nationalId: string; passwordHash: string; updatedAt: Date }): Promise<AdminLandlordDetail> {
+    const result = await this.executor.query<AdminLandlordDetail>(
+      'INSERT INTO public.users (id,"fullName",email,phone,"nationalId","passwordHash",role,"updatedAt") VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,"fullName",email,phone,"nationalId",role,active,"disabledAt","disabledBy","disableReason","createdAt","updatedAt"',
+      [input.id, input.fullName, input.email, input.phone, input.nationalId, input.passwordHash, "ARRENDADOR", input.updatedAt],
+    );
+    return result.rows[0]!;
   }
 }

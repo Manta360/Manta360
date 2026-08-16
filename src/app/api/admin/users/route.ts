@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
+import { createTextId } from "@/lib/ids";
 import { getActiveSession } from "@/lib/server-auth";
 import { registerSchema, toPublicUser } from "@/lib/validations/auth";
 import { adminUsersRepository } from "@/repositories/admin-users.server";
@@ -10,21 +9,6 @@ import { adminUsersRepository } from "@/repositories/admin-users.server";
 const landlordCreateSchema = registerSchema.extend({
   role: z.literal("ARRENDADOR"),
 });
-
-const landlordSelect = {
-  id: true,
-  fullName: true,
-  email: true,
-  phone: true,
-  nationalId: true,
-  role: true,
-  active: true,
-  disabledAt: true,
-  disabledBy: true,
-  disableReason: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
 
 type LandlordForSerialization = {
   id: string;
@@ -92,20 +76,10 @@ export async function POST(request: Request) {
 
   try {
     const data = parsed.data;
-    const landlord = await prisma.user.create({
-      data: {
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        nationalId: data.nationalId,
-        passwordHash: await hashPassword(data.password),
-        role: "ARRENDADOR",
-      },
-      select: landlordSelect,
-    });
+    const landlord = await adminUsersRepository.createLandlord({ id: createTextId(), fullName: data.fullName, email: data.email, phone: data.phone, nationalId: data.nationalId, passwordHash: await hashPassword(data.password), updatedAt: new Date() });
     return NextResponse.json({ landlord: serializeLandlord(landlord) }, { status: 201 });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       return NextResponse.json({ error: "Ya existe un usuario con ese correo o cédula" }, { status: 409 });
     }
     console.error("admin landlord create error", error);
