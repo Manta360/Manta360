@@ -1,52 +1,15 @@
-import { ContractStatus, Prisma } from "@prisma/client";
-import { activeContractStatuses } from "@/lib/contract-exclusivity";
+import type { PoolClient } from "pg";
 import { synchronizePropertyContractState } from "@/lib/property-contract-state";
-
-export const terminableContractStatuses = [
-  ContractStatus.ACTIVO,
-  ContractStatus.EN_RENOVACION,
-] as const;
-
-export function isTerminableContractStatus(status: ContractStatus) {
-  return terminableContractStatuses.includes(status as (typeof terminableContractStatuses)[number]);
-}
-
-/**
- * Finalizes contracts whose end date has already passed. This receives the
- * caller's transaction so expiration and any required property release are
- * committed atomically with the operation that discovered the expiration.
- */
-export async function reconcileExpiredContracts(
-  tx: Prisma.TransactionClient,
-  now = new Date(),
-) {
-  const expiredContracts = await tx.contracts.findMany({
-    where: {
-      status: { in: [...activeContractStatuses] },
-      endDate: { lt: now },
-    },
-    select: { id: true, propertyId: true },
-  });
-
+export const terminableContractStatuses = ["ACTIVO", "EN_RENOVACION"] as const;
+export function isTerminableContractStatus(status: string) { return terminableContractStatuses.includes(status as (typeof terminableContractStatuses)[number]); }
+/** Canonical automatic expiration: endDate < now, endedBy NULL, property synced atomically. */
+export async function reconcileExpiredContracts(client: PoolClient, now = new Date()) {
+  const expired = await client.query<{ id: string; propertyId: string }>('SELECT id,"propertyId" FROM public.contracts WHERE status IN (\'ACTIVO\',\'EN_RENOVACION\') AND "endDate" < $1 FOR UPDATE', [now]);
   let finalized = 0;
-  for (const contract of expiredContracts) {
-    const result = await tx.contracts.updateMany({
-      where: {
-        id: contract.id,
-        status: { in: [...activeContractStatuses] },
-        endDate: { lt: now },
-      },
-      data: {
-        status: ContractStatus.FINALIZADO,
-        endedAt: now,
-        endedBy: null,
-        updatedAt: now,
-      },
-    });
-    if (result.count !== 1) continue;
-    finalized += 1;
-    await synchronizePropertyContractState(tx, contract.propertyId, now);
+  for (const contract of expired.rows) {
+    const changed = await client.query('UPDATE public.contracts SET status = \'FINALIZADO\'::"ContractStatus","endedAt" = $2,"endedBy" = NULL,"updatedAt" = $2 WHERE id = $1 AND status IN (\'ACTIVO\',\'EN_RENOVACION\') AND "endDate" < $2', [contract.id, now]);
+    if (changed.rowCount !== 1) continue;
+    finalized += 1; await synchronizePropertyContractState(client, contract.propertyId, now);
   }
-
   return finalized;
 }

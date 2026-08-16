@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password";
+import { createTextId } from "@/lib/ids";
 import { registerSchema, toPublicUser } from "@/lib/validations/auth";
 import { createSessionToken, setSessionCookie } from "@/lib/session";
 import { panelPathForRole } from "@/lib/roles";
+import { sessionUserRepository } from "@/repositories/session-user.server";
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -32,16 +32,7 @@ export async function POST(request: Request) {
 
   try {
     const passwordHash = await hashPassword(data.password);
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        passwordHash,
-        fullName: data.fullName,
-        phone: data.phone,
-        nationalId: data.nationalId,
-        role: data.role,
-      },
-    });
+    const user = await sessionUserRepository.createRegisteredUser({ id: createTextId(), email: data.email, passwordHash, fullName: data.fullName, phone: data.phone, nationalId: data.nationalId, role: data.role, updatedAt: new Date() });
 
     const token = await createSessionToken({
       sub: user.id,
@@ -59,10 +50,7 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       return NextResponse.json(
         { error: "Ya existe una cuenta con ese correo o cédula" },
         { status: 409 },

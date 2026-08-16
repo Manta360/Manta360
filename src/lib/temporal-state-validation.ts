@@ -1,5 +1,7 @@
-import { IncidentStatus } from "@prisma/client";
 import { z } from "zod";
+
+export const incidentStatuses = ["PENDIENTE", "EN_PROCESO", "RESUELTO"] as const;
+export type IncidentStatus = (typeof incidentStatuses)[number];
 
 export const contractDateFields = {
   startDate: z.string().datetime().optional(),
@@ -25,11 +27,12 @@ export function isWithinRenewalWindow(endDate: Date, now = new Date()) {
 }
 
 const incidentTransitions: Record<IncidentStatus, readonly IncidentStatus[]> = {
-  [IncidentStatus.PENDIENTE]: [IncidentStatus.EN_PROCESO, IncidentStatus.RESUELTO],
-  [IncidentStatus.EN_PROCESO]: [IncidentStatus.RESUELTO],
-  [IncidentStatus.RESUELTO]: [],
+  PENDIENTE: ["EN_PROCESO", "RESUELTO"],
+  EN_PROCESO: ["RESUELTO"],
+  RESUELTO: [],
 };
 
-export function canTransitionIncidentStatus(from: IncidentStatus, to: IncidentStatus) {
-  return incidentTransitions[from].includes(to);
+export function canTransitionIncidentStatus(from: string, to: string) {
+  if (!incidentStatuses.includes(from as IncidentStatus) || !incidentStatuses.includes(to as IncidentStatus)) return false;
+  return incidentTransitions[from as IncidentStatus].includes(to as IncidentStatus);
 }

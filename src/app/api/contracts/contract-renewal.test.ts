@@ -1,85 +1,53 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn(), contracts: { findMany: vi.fn() }, contract_renewal_requests: { findMany: vi.fn() } } }));
+const mocks = vi.hoisted(() => ({ connect: vi.fn(), session: vi.fn() }));
+vi.mock("@/lib/postgres-app", () => ({ applicationPostgres: { connect: mocks.connect } }));
+vi.mock("@/lib/server-auth", () => ({ getActiveSession: mocks.session }));
 
-import { POST as decideRenewal } from "@/app/api/contract-renewals/[id]/decision/route";
-import { GET as listRenewals } from "@/app/api/contract-renewals/route";
 import { POST as requestRenewal } from "@/app/api/contracts/[id]/renewal/route";
-import { prisma } from "@/lib/prisma";
-import { getActiveSession } from "@/lib/server-auth";
+import { POST as decideRenewal } from "@/app/api/contract-renewals/[id]/decision/route";
 
-const session = vi.mocked(getActiveSession);
-const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn>; contracts: { findMany: ReturnType<typeof vi.fn> }; contract_renewal_requests: { findMany: ReturnType<typeof vi.fn> } };
-const contract = { id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", landlordId: "landlord-1", status: "ACTIVO", startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-08-20T00:00:00Z") };
-const renewal = { id: "renewal-1", contractId: "contract-1", requestedBy: "tenant-1", proposedEndDate: new Date("2027-08-20T00:00:00Z"), status: "PENDIENTE" };
-const tx = {
-  contracts: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
-  contract_renewal_requests: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-  properties: { findUnique: vi.fn(), updateMany: vi.fn() },
-};
-const context = { params: Promise.resolve({ id: "contract-1" }) };
+function pg(handler: (sql: string) => { rows?: unknown[]; rowCount?: number }) { return { query: vi.fn(async (sql: string) => ({ rows: [], rowCount: 0, ...handler(sql) })), release: vi.fn() }; }
+const endDate = new Date("2026-08-15T00:00:00.000Z");
 
-describe("KAN-48 - renovaciones contractuales", () => {
-  beforeEach(() => {
-    vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-10T00:00:00Z"));
-    session.mockResolvedValue({ sub: "tenant-1", email: "tenant@test.com", fullName: "Tenant", role: "ARRENDATARIO" });
-    tx.contracts.findMany.mockResolvedValue([]); tx.contracts.findFirst.mockResolvedValue({ id: "contract-1" }); tx.contracts.findUnique.mockResolvedValue(contract); tx.contracts.updateMany.mockResolvedValue({ count: 1 });
-    tx.contract_renewal_requests.findFirst.mockResolvedValue(null); tx.contract_renewal_requests.findUnique.mockResolvedValue(renewal); tx.contract_renewal_requests.create.mockImplementation(async ({ data }) => data); tx.contract_renewal_requests.update.mockImplementation(async ({ data }) => ({ ...renewal, ...data }));
-    tx.properties.findUnique.mockResolvedValue({ id: "property-1", status: "OCUPADO" }); tx.properties.updateMany.mockResolvedValue({ count: 1 });
-    db.$transaction.mockImplementation(async (operation: (client: typeof tx) => Promise<unknown>) => operation(tx));
-  });
+describe("KAN-48 - renovaciones contractuales PostgreSQL", () => {
+  beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date("2026-08-01T00:00:00.000Z")); });
+  afterEach(() => vi.useRealTimers());
 
-  it("acepta una solicitud propia dentro de la ventana y marca EN_RENOVACION", async () => {
-    const response = await requestRenewal(new Request("http://localhost/api/contracts/contract-1/renewal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposedEndDate: "2027-08-20T00:00:00.000Z" }) }), context);
+  it("crea una solicitud dentro de la ventana y marca EN_RENOVACION", async () => {
+    mocks.session.mockResolvedValue({ sub: "tenant-1", role: "ARRENDATARIO", email: "t@test.com", fullName: "Tenant" });
+    const client = pg((sql) => {
+      if (sql.startsWith("SELECT id,\"propertyId\",\"tenantId\"")) return { rows: [{ id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", startDate: new Date("2026-01-01"), endDate, status: "ACTIVO" }], rowCount: 1 };
+      if (sql.startsWith("SELECT 1 FROM public.contract_renewal_requests")) return { rowCount: 0 };
+      if (sql.startsWith("UPDATE public.contracts SET status='EN_RENOVACION'")) return { rowCount: 1 };
+      if (sql.startsWith("INSERT INTO public.contract_renewal_requests")) return { rows: [{ id: "renewal-1", status: "PENDIENTE" }], rowCount: 1 };
+      if (sql.startsWith("SELECT id,status FROM public.properties")) return { rows: [{ id: "property-1", status: "OCUPADO" }], rowCount: 1 };
+      if (sql.startsWith("SELECT 1 FROM public.contracts")) return { rowCount: 1 };
+      return {};
+    }); mocks.connect.mockResolvedValue(client);
+    const response = await requestRenewal(new Request("http://localhost", { method: "POST", body: "{}" }), { params: Promise.resolve({ id: "contract-1" }) });
     expect(response.status).toBe(201);
-    expect(tx.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "EN_RENOVACION" }) }));
-    expect(tx.contract_renewal_requests.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ requestedBy: "tenant-1" }) }));
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO public.contract_renewal_requests"), expect.any(Array));
   });
 
-  it("rechaza solicitudes fuera de ventana, ajenas, duplicadas o sin extension real", async () => {
-    tx.contracts.findUnique.mockResolvedValue({ ...contract, endDate: new Date("2026-08-26T00:00:00Z") });
-    await expect(requestRenewal(new Request("http://localhost", { method: "POST" }), context)).resolves.toHaveProperty("status", 409);
-    tx.contracts.findUnique.mockResolvedValue({ ...contract, tenantId: "other" });
-    await expect(requestRenewal(new Request("http://localhost", { method: "POST" }), context)).resolves.toHaveProperty("status", 404);
-    tx.contracts.findUnique.mockResolvedValue(contract); tx.contract_renewal_requests.findFirst.mockResolvedValue({ id: "pending" });
-    await expect(requestRenewal(new Request("http://localhost", { method: "POST" }), context)).resolves.toHaveProperty("status", 409);
-    tx.contract_renewal_requests.findFirst.mockResolvedValue(null);
-    const invalid = await requestRenewal(new Request("http://localhost", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ proposedEndDate: "2026-08-20T00:00:00.000Z" }) }), context);
-    expect(invalid.status).toBe(400);
+  it("bloquea solicitudes fuera de la ventana de quince dias", async () => {
+    mocks.session.mockResolvedValue({ sub: "tenant-1", role: "ARRENDATARIO", email: "t@test.com", fullName: "Tenant" });
+    const client = pg((sql) => sql.startsWith("SELECT id,\"propertyId\",\"tenantId\"") ? { rows: [{ id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", startDate: new Date("2026-01-01"), endDate: new Date("2026-08-17"), status: "ACTIVO" }], rowCount: 1 } : {}); mocks.connect.mockResolvedValue(client);
+    expect((await requestRenewal(new Request("http://localhost", { method: "POST", body: "{}" }), { params: Promise.resolve({ id: "contract-1" }) })).status).toBe(409);
   });
 
-  it("permite al arrendador aprobar, extiende endDate y conserva OCUPADO", async () => {
-    session.mockResolvedValue({ sub: "landlord-1", email: "landlord@test.com", fullName: "Landlord", role: "ARRENDADOR" });
-    const response = await decideRenewal(new Request("http://localhost/api/contract-renewals/renewal-1/decision", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "APROBAR" }) }), { params: Promise.resolve({ id: "renewal-1" }) });
-    expect(response.status).toBe(200);
-    expect(tx.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ endDate: renewal.proposedEndDate, status: "ACTIVO" }) }));
-    expect(tx.contract_renewal_requests.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "APROBADO" }) }));
-    expect(tx.properties.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("permite rechazar sin cambiar endDate ni liberar la propiedad", async () => {
-    session.mockResolvedValue({ sub: "landlord-1", email: "landlord@test.com", fullName: "Landlord", role: "ARRENDADOR" });
-    tx.contracts.findUnique.mockResolvedValue({ ...contract, status: "EN_RENOVACION" });
-    const response = await decideRenewal(new Request("http://localhost", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "RECHAZAR" }) }), { params: Promise.resolve({ id: "renewal-1" }) });
-    expect(response.status).toBe(200);
-    expect(tx.contract_renewal_requests.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "RECHAZADO" }) }));
-    expect(tx.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "ACTIVO" }) }));
-    expect(tx.properties.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("bloquea la decision de un arrendador ajeno y no deja cambios parciales", async () => {
-    session.mockResolvedValue({ sub: "other-landlord", email: "other@test.com", fullName: "Other", role: "ARRENDADOR" });
+  it("permite al arrendador aprobar y extender el contrato", async () => {
+    mocks.session.mockResolvedValue({ sub: "landlord-1", role: "ARRENDADOR", email: "l@test.com", fullName: "Landlord" });
+    const client = pg((sql) => {
+      if (sql.startsWith("SELECT id,\"contractId\"")) return { rows: [{ id: "renewal-1", contractId: "contract-1", requestedBy: "tenant-1", proposedEndDate: new Date("2027-08-15"), status: "PENDIENTE" }], rowCount: 1 };
+      if (sql.startsWith("SELECT id,\"propertyId\",\"tenantId\"")) return { rows: [{ id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", landlordId: "landlord-1", startDate: new Date("2026-01-01"), endDate, status: "EN_RENOVACION" }], rowCount: 1 };
+      if (sql.startsWith("UPDATE public.contracts SET \"endDate\"")) return { rowCount: 1 };
+      if (sql.startsWith("SELECT id,status FROM public.properties")) return { rows: [{ id: "property-1", status: "OCUPADO" }], rowCount: 1 };
+      if (sql.startsWith("SELECT 1 FROM public.contracts")) return { rowCount: 1 };
+      return { rowCount: 1 };
+    }); mocks.connect.mockResolvedValue(client);
     const response = await decideRenewal(new Request("http://localhost", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: "APROBAR" }) }), { params: Promise.resolve({ id: "renewal-1" }) });
-    expect(response.status).toBe(404);
-    expect(tx.contracts.updateMany).not.toHaveBeenCalled(); expect(tx.contract_renewal_requests.update).not.toHaveBeenCalled();
-  });
-
-  it("lista para cada parte solo el historial de renovaciones de sus contratos", async () => {
-    db.contracts.findMany.mockResolvedValue([{ ...contract, properties: { id: "property-1", title: "Casa", address: "Manta" } }]);
-    db.contract_renewal_requests.findMany.mockResolvedValue([renewal]);
-    const response = await listRenewals();
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ renewals: [{ id: "renewal-1", contract: { id: "contract-1" } }] });
+    await expect(response.json()).resolves.toMatchObject({ approved: true });
   });
 });

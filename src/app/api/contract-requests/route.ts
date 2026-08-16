@@ -1,25 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTextId } from "@/lib/ids";
-import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
-import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
-import { contractUserSelect, toContractUser } from "@/lib/contract-user";
 import { contractDateFields, hasValidProvidedContractDateRange } from "@/lib/temporal-state-validation";
-import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
+import { contractRequestsRepository, runContractRequestsTransaction } from "@/repositories/contract-requests.server";
 
 const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), ...contractDateFields }).superRefine((data, context) => {
-  if (!hasValidProvidedContractDateRange(data.startDate, data.endDate)) {
-    context.addIssue({ code: "custom", path: ["endDate"], message: "La fecha final debe ser posterior a la fecha inicial" });
-  }
+  if (!hasValidProvidedContractDateRange(data.startDate, data.endDate)) context.addIssue({ code: "custom", path: ["endDate"], message: "La fecha final debe ser posterior a la fecha inicial" });
 });
 
 export async function GET() {
   const session = await getActiveSession();
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
-  const where = session.role === "ARRENDATARIO" ? { tenantId: session.sub } : session.role === "ARRENDADOR" ? { properties: { landlordId: session.sub } } : {};
-  const requests = await prisma.contract_requests.findMany({ where, include: { properties: { select: { id: true, title: true, address: true, monthlyRent: true, landlordId: true } }, users: { select: contractUserSelect } }, orderBy: { createdAt: "desc" } });
-  return NextResponse.json({ requests: requests.map((item) => ({ ...item, users: toContractUser(item.users), properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
+  const requests = await contractRequestsRepository.listForSession(session.role, session.sub);
+  return NextResponse.json({ requests: requests.map((item) => ({ ...item, properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
 }
 
 export async function POST(request: Request) {
@@ -29,34 +23,18 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Solicitud inválida" }, { status: 400 });
   const data = parsed.data;
   try {
-    const result = await runContractTransaction(async (tx) => {
-      await reconcileExpiredContracts(tx);
-      const [property, verifiedDocuments] = await Promise.all([
-        tx.properties.findUnique({
-          where: { id: data.propertyId },
-          include: { users_properties_landlordIdTousers: { select: { active: true } } },
-        }),
-        tx.identity_documents.findMany({ where: { userId: session.sub, isCurrent: true, verificationStatus: "VERIFICADO" }, select: { documentType: true, side: true } }),
-      ]);
-      if (!property || !property.approved || property.status !== "DISPONIBLE" || !property.users_properties_landlordIdTousers.active) return { error: "La propiedad ya no está disponible", status: 409 };
-
-      const verifiedSides = new Set(verifiedDocuments.filter((document) => document.documentType === "CEDULA").map((document) => document.side));
-      const identityReady = verifiedDocuments.some((document) => document.documentType === "PASAPORTE") || (verifiedSides.has("FRENTE") && verifiedSides.has("REVERSO"));
-      if (!identityReady) return { error: "Debes tener verificados ambos lados de tu cedula o un pasaporte antes de solicitar un contrato", status: 403 };
-
-      const previous = await tx.contract_requests.findFirst({ where: { propertyId: data.propertyId, tenantId: session.sub, status: "PENDIENTE" } });
-      if (previous) return { error: "Ya tienes una solicitud pendiente para esta propiedad", status: 409 };
-
-      const item = await tx.contract_requests.create({ data: { id: createTextId(), propertyId: data.propertyId, tenantId: session.sub, message: data.message || null, startDate: data.startDate ? new Date(data.startDate) : null, endDate: data.endDate ? new Date(data.endDate) : null, updatedAt: new Date() } });
+    const result = await runContractRequestsTransaction(async (repository, contracts) => {
+      await contracts.reconcileExpiredContracts(new Date());
+      if (!await repository.propertyCanReceiveRequest(data.propertyId)) return { error: "La propiedad ya no está disponible", status: 409 };
+      if (!await repository.isTenantIdentityReady(session.sub)) return { error: "Debes tener verificados ambos lados de tu cedula o un pasaporte antes de solicitar un contrato", status: 403 };
+      if (await repository.hasPendingRequest(data.propertyId, session.sub)) return { error: "Ya tienes una solicitud pendiente para esta propiedad", status: 409 };
+      const item = await repository.createRequest({ id: createTextId(), propertyId: data.propertyId, tenantId: session.sub, message: data.message || null, startDate: data.startDate ? new Date(data.startDate) : null, endDate: data.endDate ? new Date(data.endDate) : null });
       return { item };
     });
-
     if ("error" in result) return NextResponse.json({ error: result.error }, { status: result.status });
     return NextResponse.json({ request: result.item }, { status: 201 });
   } catch (error) {
-    if (isContractTransactionConflict(error)) {
-      return NextResponse.json({ error: "La disponibilidad de la propiedad cambió durante la solicitud" }, { status: 409 });
-    }
+    if ((error as { code?: string }).code === "40001" || (error as { code?: string }).code === "23505") return NextResponse.json({ error: "La disponibilidad de la propiedad cambió durante la solicitud" }, { status: 409 });
     console.error("contract request create error", error);
     return NextResponse.json({ error: "No se pudo crear la solicitud de forma segura" }, { status: 500 });
   }

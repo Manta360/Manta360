@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getActiveSession } from "@/lib/server-auth";
-import { prisma } from "@/lib/prisma";
-import { ownedPropertyInclude, serializeOwnedProperty } from "@/lib/owned-property";
+import { serializeMineProperty } from "@/lib/owned-property-pg";
+import { propertiesRepository } from "@/repositories/properties.server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,13 +12,9 @@ export async function GET() {
   if (session.role !== "ARRENDADOR") return NextResponse.json({ error: "OperaciÃ³n no permitida" }, { status: 403 });
 
   try {
-    const properties = await prisma.properties.findMany({
-      where: { landlordId: session.sub },
-      include: ownedPropertyInclude,
-      orderBy: { createdAt: "desc" },
-    });
+    const properties = await propertiesRepository.listMineForLandlord(session.sub);
     return NextResponse.json(
-      { properties: await Promise.all(properties.map(serializeOwnedProperty)) },
+      { properties: await Promise.all(properties.map(serializeMineProperty)) },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error) {

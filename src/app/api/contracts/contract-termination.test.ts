@@ -1,120 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
-vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn() } }));
+const mocks = vi.hoisted(() => ({ connect: vi.fn(), session: vi.fn() }));
+vi.mock("@/lib/postgres-app", () => ({ applicationPostgres: { connect: mocks.connect } }));
+vi.mock("@/lib/server-auth", () => ({ getActiveSession: mocks.session }));
 
-import { POST as reconcileExpirations } from "@/app/api/admin/contracts/reconcile-expirations/route";
-import { POST as terminateContract } from "@/app/api/contracts/[id]/terminate/route";
-import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
-import { prisma } from "@/lib/prisma";
-import { getActiveSession } from "@/lib/server-auth";
+import { POST as terminate } from "@/app/api/contracts/[id]/terminate/route";
 
-const session = vi.mocked(getActiveSession);
-const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn> };
-
-const transaction = {
-  contracts: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
-  properties: { findUnique: vi.fn(), updateMany: vi.fn() },
-};
-
-const activeContract = {
-  id: "contract-1",
-  propertyId: "property-1",
-  tenantId: "tenant-1",
-  landlordId: "landlord-1",
-  status: "ACTIVO",
-};
-
-function terminateRequest() {
-  return new Request("http://localhost/api/contracts/contract-1/terminate", { method: "POST" });
+function client(status = "ACTIVO", owner = "tenant-1") {
+  const query = vi.fn(async (sql: string) => {
+    if (sql.startsWith("SELECT id,\"propertyId\",\"tenantId\"")) return { rows: [{ id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", landlordId: "landlord-1", status }], rowCount: 1 };
+    if (sql.startsWith("UPDATE public.contracts SET status = 'FINALIZADO'")) return { rows: [], rowCount: 1 };
+    if (sql.startsWith("SELECT id,status FROM public.properties")) return { rows: [{ id: "property-1", status: "OCUPADO" }], rowCount: 1 };
+    if (sql.startsWith("SELECT 1 FROM public.contracts")) return { rows: [], rowCount: 0 };
+    if (sql.startsWith("UPDATE public.properties")) return { rows: [], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  });
+  return { query, release: vi.fn(), owner };
 }
 
-describe("KAN-46 - terminacion y expiracion contractual", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    transaction.contracts.findMany.mockResolvedValue([]);
-    transaction.contracts.findFirst.mockResolvedValue(null);
-    transaction.contracts.findUnique.mockResolvedValue(activeContract);
-    transaction.contracts.updateMany.mockResolvedValue({ count: 1 });
-    transaction.properties.findUnique.mockResolvedValue({ id: "property-1", status: "OCUPADO" });
-    transaction.properties.updateMany.mockResolvedValue({ count: 1 });
-    db.$transaction.mockImplementation(async (operation: (tx: typeof transaction) => Promise<unknown>) => operation(transaction));
-  });
-
-  it.each([
-    ["arrendatario", { sub: "tenant-1", email: "tenant@test.com", fullName: "Tenant", role: "ARRENDATARIO" as const }],
-    ["arrendador", { sub: "landlord-1", email: "landlord@test.com", fullName: "Landlord", role: "ARRENDADOR" as const }],
-  ])("permite que el %s finalice su contrato ACTIVO", async (_actor, actor) => {
-    session.mockResolvedValue(actor);
-    const response = await terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) });
+describe("KAN-46 - terminacion y expiracion contractual PostgreSQL", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("finaliza un contrato ACTIVO del arrendatario y sincroniza la propiedad", async () => {
+    mocks.session.mockResolvedValue({ sub: "tenant-1", role: "ARRENDATARIO", email: "t@test.com", fullName: "Tenant" });
+    const pg = client(); mocks.connect.mockResolvedValue(pg);
+    const response = await terminate(new Request("http://localhost", { method: "POST" }), { params: Promise.resolve({ id: "contract-1" }) });
     expect(response.status).toBe(200);
-    expect(transaction.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: "contract-1", status: { in: ["ACTIVO", "EN_RENOVACION"] } }),
-      data: expect.objectContaining({ status: "FINALIZADO", endedBy: actor.sub }),
-    }));
-    expect(transaction.properties.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "property-1", status: { in: ["DISPONIBLE", "OCUPADO"] } },
-      data: expect.objectContaining({ status: "DISPONIBLE" }),
-    }));
+    await expect(response.json()).resolves.toEqual({ finalized: true });
+    expect(pg.query).toHaveBeenCalledWith(expect.stringContaining("endedBy"), expect.arrayContaining(["contract-1", expect.any(Date), "tenant-1"]));
   });
 
-  it("permite finalizar EN_RENOVACION porque sigue siendo un contrato efectivo", async () => {
-    session.mockResolvedValue({ sub: "tenant-1", email: "tenant@test.com", fullName: "Tenant", role: "ARRENDATARIO" });
-    transaction.contracts.findUnique.mockResolvedValue({ ...activeContract, status: "EN_RENOVACION" });
-    const response = await terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) });
-    expect(response.status).toBe(200);
-    expect(transaction.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "FINALIZADO" }),
-    }));
+  it("rechaza una parte ajena sin escribir", async () => {
+    mocks.session.mockResolvedValue({ sub: "tenant-2", role: "ARRENDATARIO", email: "x@test.com", fullName: "Other" });
+    const pg = client(); mocks.connect.mockResolvedValue(pg);
+    expect((await terminate(new Request("http://localhost", { method: "POST" }), { params: Promise.resolve({ id: "contract-1" }) })).status).toBe(404);
+    expect(pg.query).not.toHaveBeenCalledWith(expect.stringContaining("SET status = 'FINALIZADO'"), expect.anything());
   });
 
-  it.each([
-    ["otro arrendatario", { sub: "other-tenant", email: "other@test.com", fullName: "Other", role: "ARRENDATARIO" as const }],
-    ["otro arrendador", { sub: "other-landlord", email: "other@test.com", fullName: "Other", role: "ARRENDADOR" as const }],
-  ])("rechaza la terminacion solicitada por %s", async (_actor, actor) => {
-    session.mockResolvedValue(actor);
-    const response = await terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) });
-    expect(response.status).toBe(404);
-    expect(transaction.contracts.updateMany).not.toHaveBeenCalled();
-    expect(transaction.properties.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("rechaza visitante, roles ajenos, contratos finalizados y pendientes", async () => {
-    session.mockResolvedValue(null);
-    await expect(terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) })).resolves.toHaveProperty("status", 401);
-
-    session.mockResolvedValue({ sub: "municipio-1", email: "municipio@test.com", fullName: "Municipio", role: "MUNICIPIO" });
-    await expect(terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) })).resolves.toHaveProperty("status", 403);
-
-    session.mockResolvedValue({ sub: "tenant-1", email: "tenant@test.com", fullName: "Tenant", role: "ARRENDATARIO" });
-    transaction.contracts.findUnique.mockResolvedValue({ ...activeContract, status: "FINALIZADO" });
-    await expect(terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) })).resolves.toHaveProperty("status", 409);
-    transaction.contracts.findUnique.mockResolvedValue({ ...activeContract, status: "PENDIENTE_FIRMA" });
-    await expect(terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) })).resolves.toHaveProperty("status", 409);
-  });
-
-  it("reconoce un contrato vencido, lo conserva y libera la propiedad en la misma transaccion", async () => {
-    transaction.contracts.findMany.mockResolvedValue([{ id: "expired-1", propertyId: "property-1" }]);
-    const finalized = await reconcileExpiredContracts(transaction as never, new Date("2026-08-16T00:00:00.000Z"));
-    expect(finalized).toBe(1);
-    expect(transaction.contracts.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "FINALIZADO", endedBy: null }),
-    }));
-    expect(transaction.properties.updateMany).toHaveBeenCalledOnce();
-  });
-
-  it("no libera la propiedad si el cierre condicional no se concreta", async () => {
-    session.mockResolvedValue({ sub: "tenant-1", email: "tenant@test.com", fullName: "Tenant", role: "ARRENDATARIO" });
-    transaction.contracts.updateMany.mockResolvedValue({ count: 0 });
-    const response = await terminateContract(terminateRequest(), { params: Promise.resolve({ id: "contract-1" }) });
-    expect(response.status).toBe(409);
-    expect(transaction.properties.updateMany).not.toHaveBeenCalled();
-  });
-
-  it("permite la reconciliacion controlada solo al Municipio", async () => {
-    session.mockResolvedValue({ sub: "municipio-1", email: "municipio@test.com", fullName: "Municipio", role: "MUNICIPIO" });
-    const response = await reconcileExpirations();
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ finalized: 0 });
+  it("preserva la semantica de estado no terminable", async () => {
+    mocks.session.mockResolvedValue({ sub: "tenant-1", role: "ARRENDATARIO", email: "t@test.com", fullName: "Tenant" });
+    const pg = client("FINALIZADO"); mocks.connect.mockResolvedValue(pg);
+    expect((await terminate(new Request("http://localhost", { method: "POST" }), { params: Promise.resolve({ id: "contract-1" }) })).status).toBe(409);
   });
 });

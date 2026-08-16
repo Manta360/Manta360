@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
+import { adminPropertiesRepository } from "@/repositories/admin-properties.server";
 
 const schema = z.object({
   reason: z.string().trim().min(10).max(800),
@@ -19,26 +19,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const existing = await prisma.properties.findUnique({ where: { id }, select: { id: true, status: true } });
+  const existing = await adminPropertiesRepository.findPropertyStatus(id);
   if (!existing) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
   if (existing.status === "INHABILITADO") {
     return NextResponse.json({ error: "La propiedad ya está inhabilitada" }, { status: 409 });
   }
 
   const now = new Date();
-  const property = await prisma.properties.update({
-    where: { id },
-    data: {
-      status: "INHABILITADO",
-      approved: false,
-      approvedAt: null,
-      approvedBy: null,
-      disabledAt: now,
-      disabledBy: session.sub,
-      disableReason: parsed.data.reason,
-      updatedAt: now,
-    },
-  });
+  const property = await adminPropertiesRepository.disableProperty(id, session.sub, parsed.data.reason, now);
+  if (!property) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
 
   return NextResponse.json({
     property: { ...property, monthlyRent: Number(property.monthlyRent) },

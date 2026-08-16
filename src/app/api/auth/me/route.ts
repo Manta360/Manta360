@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import { toPublicUser } from "@/lib/validations/auth";
+import { sessionUserRepository } from "@/repositories/session-user.server";
 
 export async function GET() {
   const session = await getSession();
@@ -9,9 +9,13 @@ export async function GET() {
     return NextResponse.json({ user: null }, { status: 401 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.sub },
-  });
+  let user;
+  try {
+    user = await sessionUserRepository.findPublicSessionUserById(session.sub);
+  } catch (error) {
+    console.error("auth me user lookup error", error);
+    return NextResponse.json({ user: null }, { status: 500 });
+  }
 
   if (!user || !user.active) {
     return NextResponse.json({ user: null }, { status: 401 });

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { IdentityDocumentType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getActiveSession } from "@/lib/server-auth";
-import { prisma } from "@/lib/prisma";
+import { serializeIdentityDocument } from "@/lib/identity-document-pg";
+import { identityRepository, runIdentityTransaction } from "@/repositories/identity.server";
+import type { IdentityDocumentType } from "@/repositories/identity.repository";
 import { UploadValidationError, validateUpload } from "@/lib/file-validation";
 import {
   IDENTITY_DOCUMENTS_BUCKET,
@@ -19,12 +20,12 @@ function canManageIdentityDocuments(role: string): boolean {
 
 function documentResponse(document: {
   id: string;
-  documentType: IdentityDocumentType;
+  documentType: IdentityDocumentType | string;
   side: string;
   originalName: string;
   extension: string;
   mimeType: string;
-  fileSize: bigint;
+  fileSize: string | number;
   sha256: string;
   verificationStatus: string;
   uploadedAt: Date;
@@ -59,8 +60,8 @@ export async function GET() {
   if (!canManageIdentityDocuments(session.role)) return NextResponse.json({ error: "Este panel no puede consultar documentos de identidad" }, { status: 403 });
 
   try {
-    const documents = await prisma.identity_documents.findMany({ where: { userId: session.sub }, orderBy: [{ isCurrent: "desc" }, { uploadedAt: "desc" }] });
-    return NextResponse.json({ documents: await Promise.all(documents.map(documentResponse)) });
+    const documents = await identityRepository.listDocumentsForUser(session.sub);
+    return NextResponse.json({ documents: await Promise.all(documents.map(serializeIdentityDocument)) });
   } catch (error) {
     console.error("identity documents list error", error);
     return NextResponse.json({ error: "No se pudieron cargar los documentos" }, { status: 500 });
@@ -94,33 +95,12 @@ export async function POST(request: Request) {
   let storagePath = "";
   try {
     const upload = await validateUpload(file, "identity-document");
-    const duplicate = await prisma.identity_documents.findFirst({
-      where: { userId: session.sub, documentType: parsedType.data, side, sha256: upload.sha256, isCurrent: true },
-    });
+    const duplicate = await identityRepository.findCurrentDuplicate(session.sub, parsedType.data, side, upload.sha256);
     if (duplicate) return NextResponse.json({ document: await documentResponse(duplicate), alreadyUploaded: true });
 
     storagePath = identityDocumentPath(session.sub, upload.extension);
     await uploadStorageFile(IDENTITY_DOCUMENTS_BUCKET, storagePath, upload);
-    const document = await prisma.$transaction(async (tx) => {
-      await tx.identity_documents.updateMany({ where: { userId: session.sub, documentType: parsedType.data, side, isCurrent: true }, data: { isCurrent: false } });
-      return tx.identity_documents.create({
-        data: {
-          userId: session.sub,
-          uploadedBy: session.sub,
-          documentType: parsedType.data,
-          side,
-          storagePath,
-          originalName: upload.originalName,
-          extension: upload.extension,
-          mimeType: upload.mimeType,
-          fileSize: BigInt(upload.fileSize),
-          sha256: upload.sha256,
-          verificationStatus: "PENDIENTE",
-          expiresAt,
-          isCurrent: true,
-        },
-      });
-    });
+    const document = await runIdentityTransaction((repository) => repository.replaceCurrentAndCreate({ userId: session.sub, documentType: parsedType.data, side, storagePath, originalName: upload.originalName, extension: upload.extension, mimeType: upload.mimeType, fileSize: upload.fileSize, sha256: upload.sha256, expiresAt }));
     return NextResponse.json({ document: await documentResponse(document) }, { status: 201 });
   } catch (error) {
     if (storagePath) {
@@ -128,7 +108,7 @@ export async function POST(request: Request) {
       await removeStorageFile(IDENTITY_DOCUMENTS_BUCKET, storagePath).catch((cleanupError) => console.error("identity document cleanup error", cleanupError));
     }
     if (error instanceof UploadValidationError) return NextResponse.json({ error: error.message }, { status: 400 });
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "Ese documento ya existe" }, { status: 409 });
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") return NextResponse.json({ error: "Ese documento ya existe" }, { status: 409 });
     console.error("identity document create error", error);
     return NextResponse.json({ error: "No se pudo cargar el documento" }, { status: 500 });
   }

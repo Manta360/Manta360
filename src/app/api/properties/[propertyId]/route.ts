@@ -1,26 +1,16 @@
 import { NextResponse } from "next/server";
-import { Prisma, PropertyStatus } from "@prisma/client";
 import { getActiveSession } from "@/lib/server-auth";
-import { prisma } from "@/lib/prisma";
-import { ownedPropertyInclude, serializeOwnedProperty } from "@/lib/owned-property";
-import {
-  propertyCatalogSlug,
-  propertyUpdateSchema,
-  uniquePropertyLabels,
-} from "@/lib/property-validation";
+import { serializeMineProperty } from "@/lib/owned-property-pg";
+import { propertiesRepository, runPropertiesTransaction } from "@/repositories/properties.server";
+import { propertyUpdateSchema, uniquePropertyLabels } from "@/lib/property-validation";
 import { PROPERTY_IMAGES_BUCKET, removeStorageFile } from "@/lib/supabase/storage";
-import { activeContractStatuses, isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
-import { propertyHasEffectiveContract } from "@/lib/property-contract-state";
 
 type RouteContext = { params: Promise<{ propertyId: string }> };
 
-const landlordStatuses: Set<PropertyStatus> = new Set([PropertyStatus.DISPONIBLE, PropertyStatus.MANTENIMIENTO]);
+const landlordStatuses = new Set(["DISPONIBLE", "MANTENIMIENTO"]);
 
 async function getOwnedProperty(propertyId: string, landlordId: string) {
-  return prisma.properties.findFirst({
-    where: { id: propertyId, landlordId },
-    include: ownedPropertyInclude,
-  });
+  return propertiesRepository.findMineById(propertyId, landlordId);
 }
 
 async function requireLandlord() {
@@ -30,26 +20,13 @@ async function requireLandlord() {
   return { session };
 }
 
-async function catalogEntries(
-  tx: Prisma.TransactionClient,
-  names: string[],
-  kind: "service" | "amenity",
-) {
-  return Promise.all(names.map((name) => {
-    const slug = `${propertyCatalogSlug(name)}-${Date.now().toString(36)}`.slice(0, 120);
-    return kind === "service"
-      ? tx.service_catalog.upsert({ where: { name }, create: { name, slug }, update: { active: true } })
-      : tx.amenity_catalog.upsert({ where: { name }, create: { name, slug }, update: { active: true } });
-  }));
-}
-
 export async function GET(_request: Request, context: RouteContext) {
   const authorization = await requireLandlord();
   if ("error" in authorization) return authorization.error!;
   const { propertyId } = await context.params;
-  const property = await getOwnedProperty(propertyId, authorization.session.sub);
+  const property = await propertiesRepository.findMineById(propertyId, authorization.session.sub);
   if (!property) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  return NextResponse.json({ property: await serializeOwnedProperty(property) }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  return NextResponse.json({ property: await serializeMineProperty(property) }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -58,7 +35,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { propertyId } = await context.params;
   const property = await getOwnedProperty(propertyId, authorization.session.sub);
   if (!property) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  if (property.status === PropertyStatus.INHABILITADO) {
+  if (property.status === "INHABILITADO") {
     return NextResponse.json({ error: "La propiedad fue inhabilitada por el Municipio y no puede modificarse" }, { status: 409 });
   }
 
@@ -81,7 +58,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   try {
     if (data.status !== undefined) {
-      if (!landlordStatuses.has(data.status as PropertyStatus)) {
+      if (!landlordStatuses.has(data.status)) {
         return NextResponse.json({ error: "El Arrendador solo puede cambiar entre DISPONIBLE y MANTENIMIENTO" }, { status: 400 });
       }
       if (!landlordStatuses.has(property.status)) {
@@ -89,58 +66,22 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
       if (data.status === property.status) return NextResponse.json({ error: "La propiedad ya tiene ese estado" }, { status: 409 });
 
-      const activeContracts = await prisma.contracts.count({
-        where: { propertyId, status: { in: [...activeContractStatuses] } },
-      });
+      const activeContracts = await propertiesRepository.countEffectiveContracts(propertyId);
       if (activeContracts > 0) return NextResponse.json({ error: "No puedes cambiar el estado mientras exista un contrato activo" }, { status: 409 });
 
-      const updated = await runContractTransaction(async (tx) => {
-        const current = await tx.properties.findFirst({
-          where: { id: property.id, landlordId: authorization.session.sub },
-          select: { id: true, status: true },
-        });
-        if (!current || !landlordStatuses.has(current.status) || current.status === data.status) return null;
-        if (await propertyHasEffectiveContract(tx, property.id)) return null;
-        return tx.properties.update({
-          where: { id: property.id },
-          data: { status: data.status as PropertyStatus, updatedAt: new Date() },
-          include: ownedPropertyInclude,
-        });
-      });
+      const nextStatus = data.status as "DISPONIBLE" | "MANTENIMIENTO";
+      const changed = await runPropertiesTransaction((repository) => repository.changeLandlordStatus(property.id, authorization.session.sub, nextStatus));
+      const updated = changed ? await propertiesRepository.findMineById(property.id, authorization.session.sub) : null;
       if (!updated) return NextResponse.json({ error: "No puedes cambiar el estado mientras exista un contrato efectivo" }, { status: 409 });
-      return NextResponse.json({ property: await serializeOwnedProperty(updated) });
+      return NextResponse.json({ property: await serializeMineProperty(updated) });
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updateData: Prisma.propertiesUpdateInput = { updatedAt: new Date() };
-      if (data.title !== undefined) updateData.title = data.title;
-      if (data.address !== undefined) updateData.address = data.address;
-      if (data.monthlyRent !== undefined) updateData.monthlyRent = new Prisma.Decimal(data.monthlyRent);
-      if (data.bedrooms !== undefined) updateData.bedrooms = data.bedrooms;
-      if (data.bathrooms !== undefined) updateData.bathrooms = data.bathrooms;
-      if (data.description !== undefined) updateData.description = data.description;
-      if (data.latitude !== undefined) updateData.latitude = new Prisma.Decimal(data.latitude);
-      if (data.longitude !== undefined) updateData.longitude = new Prisma.Decimal(data.longitude);
-
-      if (data.services !== undefined) {
-        const services = await catalogEntries(tx, uniquePropertyLabels(data.services), "service");
-        updateData.property_services = {
-          deleteMany: {},
-          create: services.map(({ id }) => ({ serviceId: id })),
-        };
-      }
-      if (data.amenities !== undefined) {
-        const amenities = await catalogEntries(tx, uniquePropertyLabels(data.amenities), "amenity");
-        updateData.property_amenities = {
-          deleteMany: {},
-          create: amenities.map(({ id }) => ({ amenityId: id })),
-        };
-      }
-      return tx.properties.update({ where: { id: property.id }, data: updateData, include: ownedPropertyInclude });
-    });
-    return NextResponse.json({ property: await serializeOwnedProperty(updated) });
+    await runPropertiesTransaction((repository) => repository.updateOwnedProperty(property.id, authorization.session.sub, data, data.services === undefined ? undefined : uniquePropertyLabels(data.services), data.amenities === undefined ? undefined : uniquePropertyLabels(data.amenities)));
+    const updated = await propertiesRepository.findMineById(property.id, authorization.session.sub);
+    if (!updated) throw new Error("Propiedad no encontrada");
+    return NextResponse.json({ property: await serializeMineProperty(updated) });
   } catch (error) {
-    if (isContractTransactionConflict(error)) {
+    if ((error as { code?: string }).code === "40001" || (error as { code?: string }).code === "23505") {
       return NextResponse.json({ error: "La propiedad cambio durante la actualizacion" }, { status: 409 });
     }
     console.error("owned property update error", error);
@@ -152,33 +93,21 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const authorization = await requireLandlord();
   if ("error" in authorization) return authorization.error!;
   const { propertyId } = await context.params;
-  const property = await prisma.properties.findFirst({
-    where: { id: propertyId, landlordId: authorization.session.sub },
-    select: { id: true, status: true, property_images: { select: { id: true, storagePath: true } } },
-  });
+  const property = await propertiesRepository.findOwnedForDeletion(propertyId, authorization.session.sub);
   if (!property) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  if (property.status === PropertyStatus.INHABILITADO) {
+  if (property.status === "INHABILITADO") {
     return NextResponse.json({ error: "La propiedad fue inhabilitada por el Municipio y no puede eliminarse" }, { status: 409 });
   }
 
-  const [activeContracts, contracts, requests, incidents, messages] = await Promise.all([
-    prisma.contracts.count({ where: { propertyId, status: { in: [...activeContractStatuses] } } }),
-    prisma.contracts.count({ where: { propertyId } }),
-    prisma.contract_requests.count({ where: { propertyId } }),
-    prisma.incident_reports.count({ where: { propertyId } }),
-    prisma.chat_messages.count({ where: { propertyId } }),
-  ]);
-  if (activeContracts > 0) return NextResponse.json({ error: "No puedes eliminar una propiedad con contrato activo" }, { status: 409 });
-  if (contracts > 0 || requests > 0 || incidents > 0 || messages > 0) {
+  const history = await propertiesRepository.relatedHistoryCounts(propertyId);
+  if (history.activeContracts > 0) return NextResponse.json({ error: "No puedes eliminar una propiedad con contrato activo" }, { status: 409 });
+  if (history.contracts > 0 || history.requests > 0 || history.incidents > 0 || history.messages > 0) {
     return NextResponse.json({ error: "La propiedad posee historial relacionado y no puede eliminarse de forma segura" }, { status: 409 });
   }
 
   try {
-    await Promise.all(property.property_images.map((image) => removeStorageFile(PROPERTY_IMAGES_BUCKET, image.storagePath)));
-    await prisma.$transaction([
-      prisma.property_images.deleteMany({ where: { propertyId } }),
-      prisma.properties.delete({ where: { id: property.id } }),
-    ]);
+    await Promise.all(property.images.map((image) => removeStorageFile(PROPERTY_IMAGES_BUCKET, image.storagePath)));
+    await runPropertiesTransaction((repository) => repository.deleteProperty(property.id));
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     console.error("owned property delete error", error);

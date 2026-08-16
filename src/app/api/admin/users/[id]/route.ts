@@ -1,28 +1,13 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
 import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
 import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 import { toPublicUser } from "@/lib/validations/auth";
+import { adminUsersRepository } from "@/repositories/admin-users.server";
+import { AdminUsersRepository, type AdminLandlordDetail } from "@/repositories/admin-users.repository";
 
 type RouteContext = { params: Promise<{ id: string }> };
-
-const landlordSelect = {
-  id: true,
-  fullName: true,
-  email: true,
-  phone: true,
-  nationalId: true,
-  role: true,
-  active: true,
-  disabledAt: true,
-  disabledBy: true,
-  disableReason: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
 
 const profileUpdateSchema = z
   .object({
@@ -53,7 +38,17 @@ const landlordUpdateSchema = z.union([
   enableLandlordSchema,
 ]);
 
-function serializeLandlord(user: Prisma.UserGetPayload<{ select: typeof landlordSelect }>) {
+function serializeLandlord(user: AdminLandlordDetail) {
+  return {
+    ...toPublicUser(user),
+    updatedAt: user.updatedAt.toISOString(),
+    disabledAt: user.disabledAt?.toISOString() ?? null,
+    disabledBy: user.disabledBy,
+    disableReason: user.disableReason,
+  };
+}
+
+function serializeLandlordDetail(user: AdminLandlordDetail) {
   return {
     ...toPublicUser(user),
     updatedAt: user.updatedAt.toISOString(),
@@ -70,10 +65,7 @@ async function municipioSession() {
 }
 
 async function findLandlord(id: string) {
-  return prisma.user.findFirst({
-    where: { id, role: "ARRENDADOR" },
-    select: landlordSelect,
-  });
+  return adminUsersRepository.findLandlordById(id);
 }
 
 export async function GET(_request: Request, context: RouteContext) {
@@ -83,11 +75,11 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const landlord = await findLandlord(id);
+  const landlord = await adminUsersRepository.findLandlordById(id);
   if (!landlord) {
     return NextResponse.json({ error: "Arrendador no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({ landlord: serializeLandlord(landlord) });
+  return NextResponse.json({ landlord: serializeLandlordDetail(landlord) });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -114,11 +106,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   const update = parsed.data;
   try {
     if (!("active" in update)) {
-      const landlord = await prisma.user.update({
-        where: { id },
-        data: update,
-        select: landlordSelect,
-      });
+      const landlord = await adminUsersRepository.updateLandlord(id, update);
+      if (!landlord) return NextResponse.json({ error: "Arrendador no encontrado" }, { status: 404 });
       return NextResponse.json({ landlord: serializeLandlord(landlord) });
     }
 
@@ -133,50 +122,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       const now = new Date();
       const disabling = update.active === false;
       const reason = disabling ? update.reason : null;
-      const landlord = await tx.user.update({
-        where: { id },
-        data: {
-          active: update.active,
-          disabledAt: disabling ? now : null,
-          disabledBy: disabling ? session.sub : null,
-          disableReason: reason,
-        },
-        select: landlordSelect,
-      });
+      const repository = new AdminUsersRepository(tx);
+      const landlord = await repository.updateLandlord(id, { active: update.active, disabledAt: disabling ? now : null, disabledBy: disabling ? session.sub : null, disableReason: reason });
+      if (!landlord) throw new Error("Arrendador no encontrado");
 
       if (disabling) {
-        await tx.properties.updateMany({
-          where: { landlordId: id },
-          data: {
-            status: "INHABILITADO",
-            approved: false,
-            approvedAt: null,
-            approvedBy: null,
-            disabledAt: now,
-            disabledBy: session.sub,
-            disableReason: reason,
-            updatedAt: now,
-          },
-        });
+        await tx.query('UPDATE public.properties SET status=\'INHABILITADO\'::"PropertyStatus",approved=false,"approvedAt"=NULL,"approvedBy"=NULL,"disabledAt"=$2,"disabledBy"=$3,"disableReason"=$4,"updatedAt"=$2 WHERE "landlordId"=$1',[id,now,session.sub,reason]);
       } else {
-        const properties = await tx.properties.findMany({
-          where: { landlordId: id, status: "INHABILITADO" },
-          select: { id: true },
-        });
-        await tx.properties.updateMany({
-          where: { landlordId: id, status: "INHABILITADO" },
-          data: {
-            status: "DISPONIBLE",
-            approved: false,
-            approvedAt: null,
-            approvedBy: null,
-            disabledAt: null,
-            disabledBy: null,
-            disableReason: null,
-            updatedAt: now,
-          },
-        });
-        for (const property of properties) {
+        const properties = await tx.query<{id:string}>('SELECT id FROM public.properties WHERE "landlordId"=$1 AND status=\'INHABILITADO\'::"PropertyStatus" FOR UPDATE',[id]);
+        await tx.query('UPDATE public.properties SET status=\'DISPONIBLE\'::"PropertyStatus",approved=false,"approvedAt"=NULL,"approvedBy"=NULL,"disabledAt"=NULL,"disabledBy"=NULL,"disableReason"=NULL,"updatedAt"=$2 WHERE "landlordId"=$1 AND status=\'INHABILITADO\'::"PropertyStatus"',[id,now]);
+        for (const property of properties.rows) {
           await synchronizePropertyContractState(tx, property.id, now);
         }
       }
@@ -189,7 +144,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (isContractTransactionConflict(error)) {
       return NextResponse.json({ error: "El arrendador cambio durante la actualizacion" }, { status: 409 });
     }
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if ((error as { code?: string }).code === "23505") {
       return NextResponse.json({ error: "Ya existe un usuario con ese correo o cédula" }, { status: 409 });
     }
     console.error("admin landlord update error", error);

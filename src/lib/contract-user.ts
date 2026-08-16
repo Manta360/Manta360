@@ -1,18 +1,17 @@
-import type { Prisma } from "@prisma/client";
-
 /**
  * User data required by contract screens. Credentials and account-management
  * metadata must never be included in relationship payloads.
  */
-export const contractUserSelect = {
-  id: true,
-  fullName: true,
-  email: true,
-  phone: true,
-  nationalId: true,
-} satisfies Prisma.UserSelect;
+export type ContractUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  nationalId: string | null;
+};
 
-type ContractUser = Prisma.UserGetPayload<{ select: typeof contractUserSelect }>;
+/** Legacy Prisma callers consume this projection until their write routes move. */
+export const contractUserSelect = { id: true, fullName: true, email: true, phone: true, nationalId: true } as const;
 
 export function toContractUser(user: ContractUser) {
   return {
