@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createTextId } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
+import { incidentsRepository } from "@/repositories/incidents.server";
 import { getActiveSession } from "@/lib/server-auth";
 
 import { z } from "zod";
@@ -10,8 +11,7 @@ const incidentReportSchema = z.object({ contractId: z.string().min(1), descripti
 export async function GET() {
   const session = await getActiveSession();
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
-  const where = session.role === "ARRENDATARIO" ? { tenantId: session.sub } : session.role === "ARRENDADOR" ? { landlordId: session.sub } : {};
-  const reports = await prisma.incident_reports.findMany({ where, include: { properties: { select: { id: true, title: true, address: true } }, users_incident_reports_tenantIdTousers: { select: { id: true, fullName: true, email: true } } }, orderBy: { createdAt: "desc" } });
+  const reports = await incidentsRepository.list(session.role, session.sub);
   return NextResponse.json({ reports });
 }
 
