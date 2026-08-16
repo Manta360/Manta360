@@ -20,4 +20,18 @@ describe("PropertiesRepository", () => {
     expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("public.users"), ["property-1", "landlord-a"]);
     expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("passwordHash"), ["property-1", "landlord-a"]);
   });
+
+  it("mantiene los filtros existentes del catálogo público con valores parametrizados", async () => {
+    const executor = { query: vi.fn().mockResolvedValue({ rows: [{ id: "catalog-1", landlord: { id: "landlord-1", fullName: "Owner" }, images: [], services: ["Agua"], amenities: [] }] }) } as unknown as PropertiesSqlExecutor;
+    const repository = new PropertiesRepository(executor);
+
+    await expect(repository.listCatalogProperties({ minPrice: 100, maxPrice: 500, services: ["Agua", "Parqueo"] })).resolves.toHaveLength(1);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining("p.status = 'DISPONIBLE'"), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining("p.approved = true"), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('p."monthlyRent" >= $1'), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('p."monthlyRent" <= $2'), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining("s_filter.name = $4"), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY p."createdAt" DESC'), [100, 500, "Agua", "Parqueo"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("passwordHash"), [100, 500, "Agua", "Parqueo"]);
+  });
 });

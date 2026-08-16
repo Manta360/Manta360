@@ -3,6 +3,8 @@ import { Prisma, PropertyStatus } from "@prisma/client";
 import { getActiveSession } from "@/lib/server-auth";
 import { createTextId } from "@/lib/ids";
 import { prisma } from "@/lib/prisma";
+import { serializeCatalogProperty } from "@/lib/property-catalog-pg";
+import { propertiesRepository } from "@/repositories/properties.server";
 import { validateUpload, UploadValidationError } from "@/lib/file-validation";
 import {
   PROPERTY_IMAGES_BUCKET,
@@ -97,22 +99,16 @@ export async function GET(request: Request) {
   const services = (url.searchParams.get("services") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
   // El catálogo público mantiene la propiedad visible durante conversaciones y
   // solicitudes; solo se retira cuando el contrato queda formalizado.
-  const where: Prisma.propertiesWhereInput = { status: PropertyStatus.DISPONIBLE, approved: true };
-
-  if (minPrice !== null && Number.isFinite(minPrice) && minPrice >= 0) where.monthlyRent = { ...(where.monthlyRent as object), gte: minPrice };
-  if (maxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0) where.monthlyRent = { ...(where.monthlyRent as object), lte: maxPrice };
-  if (services.length > 0) {
-    where.AND = services.map((name) => ({ property_services: { some: { service_catalog: { name } } } }));
-  }
+  const filters = {
+    minPrice: minPrice !== null && Number.isFinite(minPrice) && minPrice >= 0 ? minPrice : null,
+    maxPrice: maxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0 ? maxPrice : null,
+    services,
+  };
 
   try {
-    const properties = await prisma.properties.findMany({
-      where,
-      include: findPropertyInclude(),
-      orderBy: { createdAt: "desc" },
-    });
+    const properties = await propertiesRepository.listCatalogProperties(filters);
     return NextResponse.json(
-      { properties: await Promise.all(properties.map(serializeProperty)) },
+      { properties: await Promise.all(properties.map(serializeCatalogProperty)) },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error) {

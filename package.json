@@ -20,6 +20,7 @@
     "db:test-dashboard": "tsx scripts/test-test-postgres-dashboard.ts",
     "db:test-properties-mine": "tsx scripts/test-test-postgres-properties-mine.ts",
     "db:test-property-detail": "tsx scripts/test-test-postgres-property-detail.ts",
+    "db:test-properties-catalog": "tsx scripts/test-test-postgres-properties-catalog.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
