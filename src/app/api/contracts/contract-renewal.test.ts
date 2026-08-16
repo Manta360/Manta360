@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn(), contracts: { findMany: vi.fn() }, contract_renewal_requests: { findMany: vi.fn() } } }));
+vi.mock("@/repositories/contract-renewals.server", () => ({ contractRenewalsRepository: { listForSession: vi.fn() } }));
 
 import { POST as decideRenewal } from "@/app/api/contract-renewals/[id]/decision/route";
 import { GET as listRenewals } from "@/app/api/contract-renewals/route";
 import { POST as requestRenewal } from "@/app/api/contracts/[id]/renewal/route";
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
+import { contractRenewalsRepository } from "@/repositories/contract-renewals.server";
 
 const session = vi.mocked(getActiveSession);
+const renewalRepository = vi.mocked(contractRenewalsRepository);
 const db = prisma as unknown as { $transaction: ReturnType<typeof vi.fn>; contracts: { findMany: ReturnType<typeof vi.fn> }; contract_renewal_requests: { findMany: ReturnType<typeof vi.fn> } };
 const contract = { id: "contract-1", propertyId: "property-1", tenantId: "tenant-1", landlordId: "landlord-1", status: "ACTIVO", startDate: new Date("2026-01-01T00:00:00Z"), endDate: new Date("2026-08-20T00:00:00Z") };
 const renewal = { id: "renewal-1", contractId: "contract-1", requestedBy: "tenant-1", proposedEndDate: new Date("2027-08-20T00:00:00Z"), status: "PENDIENTE" };
@@ -76,8 +79,7 @@ describe("KAN-48 - renovaciones contractuales", () => {
   });
 
   it("lista para cada parte solo el historial de renovaciones de sus contratos", async () => {
-    db.contracts.findMany.mockResolvedValue([{ ...contract, properties: { id: "property-1", title: "Casa", address: "Manta" } }]);
-    db.contract_renewal_requests.findMany.mockResolvedValue([renewal]);
+    renewalRepository.listForSession.mockResolvedValue([{ ...renewal, contract: { id: "contract-1", startDate: contract.startDate, endDate: contract.endDate, status: contract.status, properties: { id: "property-1", title: "Casa", address: "Manta" } } }] as never);
     const response = await listRenewals();
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ renewals: [{ id: "renewal-1", contract: { id: "contract-1" } }] });
