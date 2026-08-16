@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createTextId } from "@/lib/ids";
 import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
-import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
-import { contractUserSelect, toContractUser } from "@/lib/contract-user";
 import { contractDateFields, hasValidProvidedContractDateRange } from "@/lib/temporal-state-validation";
 import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
+import { contractRequestsRepository } from "@/repositories/contract-requests.server";
 
 const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), ...contractDateFields }).superRefine((data, context) => {
   if (!hasValidProvidedContractDateRange(data.startDate, data.endDate)) {
@@ -17,9 +16,8 @@ const requestSchema = z.object({ propertyId: z.string().min(1), message: z.strin
 export async function GET() {
   const session = await getActiveSession();
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
-  const where = session.role === "ARRENDATARIO" ? { tenantId: session.sub } : session.role === "ARRENDADOR" ? { properties: { landlordId: session.sub } } : {};
-  const requests = await prisma.contract_requests.findMany({ where, include: { properties: { select: { id: true, title: true, address: true, monthlyRent: true, landlordId: true } }, users: { select: contractUserSelect } }, orderBy: { createdAt: "desc" } });
-  return NextResponse.json({ requests: requests.map((item) => ({ ...item, users: toContractUser(item.users), properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
+  const requests = await contractRequestsRepository.listForSession(session.role, session.sub);
+  return NextResponse.json({ requests: requests.map((item) => ({ ...item, properties: { ...item.properties, monthlyRent: Number(item.properties.monthlyRent) } })) });
 }
 
 export async function POST(request: Request) {

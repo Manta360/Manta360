@@ -24,6 +24,7 @@
     "db:test-identity-documents": "tsx scripts/test-test-postgres-identity-documents.ts",
     "db:test-identity-review": "tsx scripts/test-test-postgres-identity-review.ts",
     "db:test-incidents": "tsx scripts/test-test-postgres-incidents.ts",
+    "db:test-contract-requests": "tsx scripts/test-test-postgres-contract-requests.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
