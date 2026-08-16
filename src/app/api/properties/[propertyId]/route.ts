@@ -3,6 +3,8 @@ import { Prisma, PropertyStatus } from "@prisma/client";
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
 import { ownedPropertyInclude, serializeOwnedProperty } from "@/lib/owned-property";
+import { serializeMineProperty } from "@/lib/owned-property-pg";
+import { propertiesRepository } from "@/repositories/properties.server";
 import {
   propertyCatalogSlug,
   propertyUpdateSchema,
@@ -47,9 +49,9 @@ export async function GET(_request: Request, context: RouteContext) {
   const authorization = await requireLandlord();
   if ("error" in authorization) return authorization.error!;
   const { propertyId } = await context.params;
-  const property = await getOwnedProperty(propertyId, authorization.session.sub);
+  const property = await propertiesRepository.findMineById(propertyId, authorization.session.sub);
   if (!property) return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  return NextResponse.json({ property: await serializeOwnedProperty(property) }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  return NextResponse.json({ property: await serializeMineProperty(property) }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {

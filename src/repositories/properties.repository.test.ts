@@ -10,4 +10,14 @@ describe("PropertiesRepository", () => {
     expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('WHERE p."landlordId" = $1'), ["landlord-a"]);
     expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('ORDER BY p."createdAt" DESC'), ["landlord-a"]);
   });
+
+  it("busca detalle exclusivamente por propiedad y landlord parametrizados sin seleccionar usuarios", async () => {
+    const executor = { query: vi.fn().mockResolvedValue({ rows: [{ id: "property-1", images: [], services: [], amenities: [] }] }) } as unknown as PropertiesSqlExecutor;
+    const repository = new PropertiesRepository(executor);
+
+    await expect(repository.findMineById("property-1", "landlord-a")).resolves.toMatchObject({ id: "property-1" });
+    expect(executor.query).toHaveBeenCalledWith(expect.stringContaining('WHERE p.id = $1 AND p."landlordId" = $2'), ["property-1", "landlord-a"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("public.users"), ["property-1", "landlord-a"]);
+    expect(executor.query).toHaveBeenCalledWith(expect.not.stringContaining("passwordHash"), ["property-1", "landlord-a"]);
+  });
 });

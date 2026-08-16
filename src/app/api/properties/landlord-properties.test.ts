@@ -6,7 +6,7 @@ vi.mock("@/lib/owned-property", () => ({
   serializeOwnedProperty: vi.fn(async (property) => property),
 }));
 vi.mock("@/lib/owned-property-pg", () => ({ serializeMineProperty: vi.fn(async (property) => property) }));
-vi.mock("@/repositories/properties.server", () => ({ propertiesRepository: { listMineForLandlord: vi.fn() } }));
+vi.mock("@/repositories/properties.server", () => ({ propertiesRepository: { listMineForLandlord: vi.fn(), findMineById: vi.fn() } }));
 vi.mock("@/lib/supabase/storage", () => ({
   PROPERTY_IMAGES_BUCKET: "property-images",
   removeStorageFile: vi.fn(),
@@ -70,6 +70,7 @@ beforeEach(() => {
   db.properties.findFirst.mockResolvedValue(property);
   db.properties.findMany.mockResolvedValue([property]);
   vi.mocked(propertiesRepository.listMineForLandlord).mockResolvedValue([property] as never);
+  vi.mocked(propertiesRepository.findMineById).mockResolvedValue(property as never);
   db.properties.update.mockResolvedValue(property);
   db.properties.delete.mockResolvedValue(property);
   db.property_images.deleteMany.mockResolvedValue({ count: 0 });
@@ -103,11 +104,29 @@ describe("KAN-40 - propiedades propias", () => {
   it("devuelve el detalle de una propiedad propia", async () => {
     const response = await GET(new Request("http://localhost/api/properties/property-1"), context);
     expect(response.status).toBe(200);
-    expect(db.properties.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: property.id, landlordId: landlord.sub } }));
+    expect(propertiesRepository.findMineById).toHaveBeenCalledWith(property.id, landlord.sub);
+    expect(JSON.stringify(await response.json())).not.toContain("passwordHash");
+  });
+
+  it("mantiene visibles para su propietario propiedades inhabilitadas y no aprobadas", async () => {
+    vi.mocked(propertiesRepository.findMineById).mockResolvedValue({ ...property, status: "INHABILITADO", approved: false } as never);
+    const response = await GET(new Request("http://localhost/api/properties/property-1"), context);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ property: { status: "INHABILITADO", approved: false } });
+  });
+
+  it("requiere sesion para el detalle", async () => {
+    session.mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost/api/properties/property-1"), context)).status).toBe(401);
+  });
+
+  it.each(["ARRENDATARIO", "MUNICIPIO"] as const)("rechaza a %s en el detalle", async (role) => {
+    session.mockResolvedValue({ ...landlord, role });
+    expect((await GET(new Request("http://localhost/api/properties/property-1"), context)).status).toBe(403);
   });
 
   it.each(["propiedad ajena", "propiedad inexistente"])("devuelve 404 para %s", async () => {
-    db.properties.findFirst.mockResolvedValue(null);
+    vi.mocked(propertiesRepository.findMineById).mockResolvedValue(null);
     expect((await GET(new Request("http://localhost/api/properties/property-1"), context)).status).toBe(404);
   });
 
