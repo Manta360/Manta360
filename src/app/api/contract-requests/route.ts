@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
 import { contractUserSelect, toContractUser } from "@/lib/contract-user";
 import { contractDateFields, hasValidProvidedContractDateRange } from "@/lib/temporal-state-validation";
+import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
 
 const requestSchema = z.object({ propertyId: z.string().min(1), message: z.string().trim().max(2000).optional(), ...contractDateFields }).superRefine((data, context) => {
   if (!hasValidProvidedContractDateRange(data.startDate, data.endDate)) {
@@ -29,6 +30,7 @@ export async function POST(request: Request) {
   const data = parsed.data;
   try {
     const result = await runContractTransaction(async (tx) => {
+      await reconcileExpiredContracts(tx);
       const [property, verifiedDocuments] = await Promise.all([
         tx.properties.findUnique({
           where: { id: data.propertyId },

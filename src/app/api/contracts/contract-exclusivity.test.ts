@@ -18,7 +18,7 @@ const transaction = {
   properties: { findUnique: vi.fn(), updateMany: vi.fn() },
   identity_documents: { findMany: vi.fn() },
   contract_requests: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
-  contracts: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+  contracts: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
 };
 
 const availableProperty = {
@@ -75,8 +75,10 @@ describe("KAN-43 - exclusividad contractual", () => {
     transaction.contract_requests.updateMany.mockResolvedValue({ count: 1 });
     transaction.contracts.findUnique.mockResolvedValue(pendingMunicipalContract);
     transaction.contracts.findFirst.mockResolvedValue(null);
+    transaction.contracts.findMany.mockResolvedValue([]);
     transaction.contracts.create.mockImplementation(async ({ data }) => ({ ...data }));
     transaction.contracts.update.mockImplementation(async ({ data }) => ({ ...pendingMunicipalContract, ...data }));
+    transaction.contracts.updateMany.mockResolvedValue({ count: 1 });
     db.$transaction.mockImplementation(async (operation: (tx: typeof transaction) => Promise<unknown>) => operation(transaction));
   });
 

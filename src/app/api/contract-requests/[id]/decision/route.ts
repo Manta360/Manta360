@@ -4,6 +4,7 @@ import { activeContractStatuses, isContractTransactionConflict, runContractTrans
 import { createTextId } from "@/lib/ids";
 import { getActiveSession } from "@/lib/server-auth";
 import { hasValidContractDateRange } from "@/lib/temporal-state-validation";
+import { reconcileExpiredContracts } from "@/lib/contract-lifecycle";
 
 const schema = z.object({ decision: z.enum(["APROBADO", "RECHAZADO"]) });
 
@@ -17,6 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const result = await runContractTransaction(async (tx) => {
+      await reconcileExpiredContracts(tx);
       const item = await tx.contract_requests.findUnique({
         where: { id },
         include: {
