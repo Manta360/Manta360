@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import "dotenv/config";
 
 const APPLICATION_PROJECT_REF = "ycerwszvzkmyisflxkpe";
 
