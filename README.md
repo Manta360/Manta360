@@ -1,117 +1,102 @@
 # Manta360
 
-> Plataforma web para la gestión segura de arriendos en Manta, Ecuador.
+Plataforma web para la gestión segura de arriendos en Manta, Ecuador. Conecta arrendatarios, arrendadores y Municipio para publicar inmuebles, verificar identidad, gestionar contratos, renovaciones, incidencias y comunicación privada.
 
-Manta360 conecta a **arrendatarios**, **arrendadores** y al **Municipio** en un flujo único: publicación de inmuebles, verificación de identidad, comunicación privada, generación de contratos y control municipal.
+## Tecnología
 
-## Características principales
+- Next.js 15, React 19 y TypeScript
+- PostgreSQL directo mediante `pg` (node-postgres)
+- Supabase Storage
+- Tailwind CSS, Leaflet/OpenStreetMap, Zod y bcrypt
 
-- Catálogo público: las propiedades aprobadas y disponibles pueden verse sin iniciar sesión.
-- Registro con nombre completo, cédula, teléfono, correo y contraseña.
-- Roles de Arrendador, Arrendatario y Municipio.
-- Carga de cédula por frente y reverso o pasaporte, con validación municipal.
-- Publicación de propiedades con fotos desde el dispositivo, ubicación y validaciones claras.
-- Aprobación municipal de propiedades antes de aparecer en el catálogo público.
-- Chat privado entre interesado y dueño de cada propiedad.
-- Solicitud, preparación e impresión de contratos.
-- Flujo de firmas: ambas partes confirman; luego el Municipio aprueba o rechaza el contrato.
-- La propiedad pasa a `OCUPADO` solo después de la aprobación municipal del contrato.
-- Solicitudes de renovación para contratos próximos a vencer.
-- Reporte de incidencias y quejas: Los arrendatarios con contratos activos pueden reportar problemas; los arrendadores gestionan el estado (Pendiente, En proceso, Resuelto).
-- Control administrativo: El Municipio tiene la potestad de inhabilitar temporalmente a arrendadores o propiedades específicas justificando un motivo.
-
-## Tecnologías
-
-- Next.js 15 + React 19 + TypeScript
-- Prisma ORM + PostgreSQL
-- Supabase Database y Supabase Storage
-- Tailwind CSS + Leaflet/OpenStreetMap
-- Zod para validaciones y bcrypt para contraseñas
+Prisma ya no forma parte de la aplicación: el esquema canónico está en [database/schema.sql](database/schema.sql).
 
 ## Requisitos
 
 - Node.js 20 o superior
 - npm 10 o superior
-- Una cuenta/proyecto de Supabase para el entorno compartido
-- Docker Desktop solo si se desea trabajar con PostgreSQL local
+- Un proyecto Supabase PostgreSQL y Storage autorizado
 
-## Instalación rápida con Supabase
+## Instalación
 
-1. Clona el repositorio y entra a la carpeta:
-
-   ```bash
-   git clone https://github.com/Manta360/Manta360.git
-   cd Manta360
-   ```
-
-2. Instala dependencias:
-
-   ```bash
-   npm install
-   ```
-
-3. Copia el archivo de ejemplo y configura las variables:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   En Windows PowerShell:
-
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-4. Completa `.env` con las cadenas del proyecto de Supabase. **No subas este archivo a GitHub.**
-
-   ```env
-   DATABASE_URL="postgresql://...:6543/postgres?pgbouncer=true"
-   DIRECT_URL="postgresql://...:5432/postgres"
-   AUTH_SECRET="usa-una-clave-larga-y-privada"
-   SUPABASE_URL="https://TU-PROYECTO.supabase.co"
-   SUPABASE_SERVICE_ROLE_KEY="clave-secreta-solo-del-servidor"
-   ```
-
-   - `DATABASE_URL`: pooler transaccional, puerto `6543`.
-   - `DIRECT_URL`: pooler de sesión, puerto `5432`, para Prisma.
-   - Nunca uses `SUPABASE_SERVICE_ROLE_KEY` en variables `NEXT_PUBLIC_*`.
-
-5. En Supabase Storage crea o verifica estos buckets:
-
-   ```text
-   property-images
-   identity-documents
-   ```
-
-   `identity-documents` debe permanecer privado. Las fotos de propiedades pueden ser públicas porque se muestran en el catálogo.
-
-6. Aplica el esquema y crea el usuario municipal:
-
-   ```bash
-   npx prisma db push
-   npm run db:seed-municipio
-   ```
-
-7. Inicia la aplicación:
-
-   ```bash
-   npm run dev
-   ```
-
-   Abre [http://localhost:3000](http://localhost:3000).
-
-> Nunca uses `npx prisma db push --force-reset` en Supabase: elimina los datos existentes.
-
-## Usuario municipal de desarrollo
-
-El seed crea o actualiza este usuario solo si no se definen otras variables:
-
-```text
-Correo: municipio@manta360.gob.ec
-Contraseña: Municipio2026!
+```bash
+git clone https://github.com/Manta360/Manta360.git
+cd Manta360
+npm install
 ```
 
-Antes de un despliegue real, define valores propios antes de ejecutar el seed:
+Copia el archivo de configuración:
+
+```bash
+cp .env.example .env
+```
+
+En PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Nunca subas `.env` al repositorio.
+
+## Variables de entorno
+
+La aplicación usa exclusivamente `PG_APP_*`; no existe fallback a `DATABASE_URL`.
+
+```env
+PG_APP_HOST="aws-0-[REGION].pooler.supabase.com"
+PG_APP_PORT="5432"
+PG_APP_DATABASE="postgres"
+PG_APP_USER="postgres.ycerwszvzkmyisflxkpe"
+PG_APP_PASSWORD="clave-de-aplicacion"
+PG_APP_PROJECT_REF="ycerwszvzkmyisflxkpe"
+
+AUTH_SECRET="usa-una-clave-larga-y-privada"
+
+SUPABASE_URL="https://TU-PROYECTO.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="clave-secreta-solo-del-servidor"
+```
+
+- `PG_APP_*` usa el Session Pooler de Supabase por el puerto `5432`.
+- `PG_APP_PROJECT_REF` se valida al iniciar para impedir conexiones accidentales a otro proyecto. El target actual autorizado es `manta360prueba` (`ycerwszvzkmyisflxkpe`).
+- Las pruebas de integración usan variables separadas `PG_TEST_*`.
+- El bootstrap de Storage temporal usa `SUPABASE_TEST_URL` y `SUPABASE_TEST_SERVICE_ROLE_KEY`.
+- Nunca expongas `SUPABASE_SERVICE_ROLE_KEY` ni `SUPABASE_TEST_SERVICE_ROLE_KEY` mediante variables `NEXT_PUBLIC_*`.
+
+Consulta [.env.example](.env.example) para el inventario completo, incluidos los valores de prueba y `MUNICIPIO_PASSWORD`.
+
+## Base de datos
+
+`database/schema.sql` es la fuente canónica del esquema PostgreSQL. Incluye tablas, enums, claves, índices, restricciones contractuales y los checks históricos de Properties.
+
+Antes de ejecutar procesos que escriban, valida la conexión de aplicación:
+
+```bash
+npm run db:check-app
+```
+
+La comprobación verifica el project ref esperado y ejecuta un INSERT dentro de `BEGIN`/`ROLLBACK`; no deja datos persistentes.
+
+## Storage
+
+Los buckets requeridos son privados:
+
+| Bucket | MIME permitidos | Límite | URL firmada |
+| --- | --- | ---: | ---: |
+| `property-images` | JPEG, PNG, WebP | 8 MiB | 3600 s |
+| `identity-documents` | PDF, JPEG, PNG | 10 MiB | 300 s |
+
+El bootstrap idempotente para el proyecto de prueba se ejecuta con:
+
+```bash
+npm run storage:bootstrap-test
+```
+
+No crea policies abiertas ni deja objetos temporales después de su verificación.
+
+## Seed municipal
+
+El seed es PostgreSQL e idempotente. Requiere `MUNICIPIO_PASSWORD` y no imprime contraseñas ni hashes.
 
 ```powershell
 $env:MUNICIPIO_EMAIL="admin@tu-dominio.ec"
@@ -122,74 +107,41 @@ $env:MUNICIPIO_CEDULA="0000000000"
 npm run db:seed-municipio
 ```
 
-## Flujo de alquiler
-
-1. El Arrendador se registra y carga su documento de identidad.
-2. El Municipio valida el documento.
-3. El Arrendador publica una propiedad; el Municipio la aprueba.
-4. Cualquier visitante puede ver la propiedad pública.
-5. Un Arrendatario validado contacta al dueño mediante el chat.
-6. El Arrendatario solicita el contrato y el Arrendador acepta o rechaza.
-7. Ambas partes revisan y confirman sus datos contractuales.
-8. El contrato entra en revisión municipal.
-9. El Municipio aprueba o rechaza. Al aprobar, el contrato queda activo y la propiedad pasa a ocupada.
-
-## Desarrollo con Docker (opcional)
-
-Para trabajar sin Supabase, inicia PostgreSQL local:
-
-```bash
-docker compose up -d
-```
-
-En `.env`, usa:
-
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/manta360?schema=public"
-DIRECT_URL="postgresql://postgres:postgres@localhost:5432/manta360"
-AUTH_SECRET="clave-local-solo-desarrollo"
-```
-
-Luego:
-
-```bash
-npx prisma db push
-npm run db:seed-municipio
-npm run dev
-```
-
 ## Comandos útiles
 
 ```bash
 npm run dev                 # Desarrollo
 npm run build               # Compilación de producción
-npm run start               # Ejecutar compilación de producción
+npm run start               # Ejecutar producción
 npm run lint                # Linter
-npm test            # Ejecutar la suite de pruebas (ver TESTING.md para más detalles)
-npm run db:generate         # Generar Prisma Client
-npm run db:push             # Sincronizar esquema Prisma
-npm run db:seed-municipio   # Crear/actualizar usuario municipal
+npm test                    # Suite de pruebas
+npm run db:check-app        # Verifica PG_APP_* con rollback
+npm run db:seed-municipio   # Crea o actualiza el usuario municipal
+```
+
+## Flujo de alquiler
+
+1. El arrendador registra y valida su identidad.
+2. El Municipio revisa la identidad y aprueba la propiedad.
+3. El arrendatario solicita un contrato.
+4. Arrendador y arrendatario completan las firmas.
+5. El Municipio aprueba o rechaza el contrato.
+6. Una aprobación activa el contrato y sincroniza la propiedad como ocupada.
+7. El flujo cubre incidencias, renovación y terminación/expiración contractual.
+
+## Estructura
+
+```text
+src/app/              Páginas y Route Handlers de Next.js
+src/components/       Componentes de interfaz
+src/lib/              Conexión PostgreSQL, autenticación y utilidades
+src/repositories/     Repositories PostgreSQL
+database/schema.sql   Esquema canónico PostgreSQL
+scripts/              Seeds, validaciones e integraciones
 ```
 
 ## Seguridad y colaboración
 
-- `.env` está ignorado por Git; verifica que nunca se agregue al repositorio.
-- No compartas ni publiques contraseñas, URLs con contraseña ni `SUPABASE_SERVICE_ROLE_KEY`.
-- Rota cualquier clave que haya sido expuesta en un chat, captura o commit.
-- Antes de publicar cambios, ejecuta `npm run lint`, `npm test` y prueba el flujo principal.
-- Para colaboración, crea una rama y abre un Pull Request; evita subir directamente a `main`.
-
-## Estructura del proyecto
-
-```text
-src/app/              Páginas y rutas API de Next.js
-src/components/       Componentes de interfaz
-src/lib/              Prisma, autenticación y utilidades
-prisma/schema.prisma  Modelo de datos
-scripts/              Seeds de desarrollo
-TESTING.md            Documentación de la suite de pruebas y cobertura
-```
-
-## Equipo
-
-Proyecto Final — Desarrollo de Sistemas de Información.
+- No compartas contraseñas, connection strings o service-role keys.
+- Ejecuta `npm test`, `npm run lint` y `npm run build` antes de publicar cambios.
+- Trabaja en una rama y abre Pull Requests; evita subir directamente a `main`.
