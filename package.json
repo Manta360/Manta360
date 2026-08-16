@@ -16,6 +16,7 @@
     "db:bootstrap-test": "tsx scripts/bootstrap-test-postgres-schema.ts",
     "db:verify-test": "tsx scripts/verify-test-postgres-schema.ts",
     "db:test-constraints": "tsx scripts/test-test-postgres-constraints.ts",
+    "db:test-chat": "tsx scripts/test-test-postgres-chat.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
