@@ -18,4 +18,24 @@ describe("AdminUsersRepository", () => {
     expect(sql).not.toContain("users.*");
     expect(values).toBeUndefined();
   });
+
+  it("finds one landlord by parameterized id without exposing internal user fields", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{
+      id: "landlord-1", fullName: "Maria", email: "maria@test", phone: null, nationalId: null, role: "ARRENDADOR", active: false,
+      disabledAt: new Date("2026-08-01T00:00:00.000Z"), disabledBy: "municipio-1", disableReason: "Motivo", createdAt: new Date("2026-08-02T00:00:00.000Z"), updatedAt: new Date("2026-08-03T00:00:00.000Z"),
+    }] });
+    const repository = new AdminUsersRepository({ query });
+
+    await expect(repository.findLandlordById("landlord-1")).resolves.toMatchObject({ id: "landlord-1", active: false, disabledBy: "municipio-1" });
+    const [sql, values] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("WHERE u.id = $1 AND u.role = 'ARRENDADOR'::\"Role\"");
+    expect(sql).not.toContain("users.*");
+    expect(sql).not.toContain("passwordHash");
+    expect(values).toEqual(["landlord-1"]);
+  });
+
+  it("returns null for a missing user or a user with another role", async () => {
+    const repository = new AdminUsersRepository({ query: vi.fn().mockResolvedValue({ rows: [] }) });
+    await expect(repository.findLandlordById("tenant-1")).resolves.toBeNull();
+  });
 });

@@ -6,6 +6,8 @@ import { getActiveSession } from "@/lib/server-auth";
 import { isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
 import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 import { toPublicUser } from "@/lib/validations/auth";
+import { adminUsersRepository } from "@/repositories/admin-users.server";
+import type { AdminLandlordDetail } from "@/repositories/admin-users.repository";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -63,6 +65,16 @@ function serializeLandlord(user: Prisma.UserGetPayload<{ select: typeof landlord
   };
 }
 
+function serializeLandlordDetail(user: AdminLandlordDetail) {
+  return {
+    ...toPublicUser(user),
+    updatedAt: user.updatedAt.toISOString(),
+    disabledAt: user.disabledAt?.toISOString() ?? null,
+    disabledBy: user.disabledBy,
+    disableReason: user.disableReason,
+  };
+}
+
 async function municipioSession() {
   const session = await getActiveSession();
   if (!session || session.role !== "MUNICIPIO") return null;
@@ -83,11 +95,11 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const landlord = await findLandlord(id);
+  const landlord = await adminUsersRepository.findLandlordById(id);
   if (!landlord) {
     return NextResponse.json({ error: "Arrendador no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({ landlord: serializeLandlord(landlord) });
+  return NextResponse.json({ landlord: serializeLandlordDetail(landlord) });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {

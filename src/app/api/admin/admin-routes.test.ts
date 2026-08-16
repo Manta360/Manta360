@@ -27,7 +27,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 vi.mock("@/repositories/admin-users.server", () => ({
-  adminUsersRepository: { listLandlords: vi.fn() },
+  adminUsersRepository: { listLandlords: vi.fn(), findLandlordById: vi.fn() },
 }));
 
 import { getActiveSession } from "@/lib/server-auth";
@@ -226,7 +226,7 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
   });
 
   it("no permite consultar a un Arrendatario como detalle administrativo", async () => {
-    mockedPrisma.user.findFirst.mockResolvedValue(null);
+    mockedAdminUsersRepository.findLandlordById.mockResolvedValue(null);
 
     const response = await getLandlord(
       new Request("http://localhost/api/admin/users/tenant-1"),
@@ -234,13 +234,11 @@ describe("KAN-39 — gestión administrativa de arrendadores", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(mockedPrisma.user.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: "tenant-1", role: "ARRENDADOR" },
-    }));
+    expect(mockedAdminUsersRepository.findLandlordById).toHaveBeenCalledWith("tenant-1");
   });
 
   it("devuelve detalle seguro del Arrendador sin passwordHash", async () => {
-    mockedPrisma.user.findFirst.mockResolvedValue(landlord as never);
+    mockedAdminUsersRepository.findLandlordById.mockResolvedValue(landlord as never);
 
     const response = await getLandlord(
       new Request("http://localhost/api/admin/users/landlord-1"),

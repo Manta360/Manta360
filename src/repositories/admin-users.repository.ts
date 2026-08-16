@@ -16,6 +16,8 @@ export type AdminLandlord = {
   propertiesCount: number;
 };
 
+export type AdminLandlordDetail = Omit<AdminLandlord, "propertiesCount">;
+
 type AdminLandlordRow = Omit<AdminLandlord, "propertiesCount"> & { propertiesCount: string | number };
 
 export type AdminUsersSqlResult<Row> = { rows: Row[] };
@@ -35,11 +37,24 @@ const LIST_LANDLORDS_SQL = `
   ORDER BY u."createdAt" DESC
 `;
 
+const FIND_LANDLORD_BY_ID_SQL = `
+  SELECT u.id, u."fullName" AS "fullName", u.email, u.phone, u."nationalId" AS "nationalId", u.role, u.active,
+    u."disabledAt" AT TIME ZONE 'UTC' AS "disabledAt", u."disabledBy" AS "disabledBy", u."disableReason" AS "disableReason",
+    u."createdAt" AT TIME ZONE 'UTC' AS "createdAt", u."updatedAt" AT TIME ZONE 'UTC' AS "updatedAt"
+  FROM public.users u
+  WHERE u.id = $1 AND u.role = 'ARRENDADOR'::"Role"
+`;
+
 export class AdminUsersRepository {
   constructor(private readonly executor: AdminUsersSqlExecutor) {}
 
   async listLandlords(): Promise<AdminLandlord[]> {
     const result = await this.executor.query<AdminLandlordRow>(LIST_LANDLORDS_SQL);
     return result.rows.map((landlord) => ({ ...landlord, propertiesCount: Number(landlord.propertiesCount) }));
+  }
+
+  async findLandlordById(id: string): Promise<AdminLandlordDetail | null> {
+    const result = await this.executor.query<AdminLandlordDetail>(FIND_LANDLORD_BY_ID_SQL, [id]);
+    return result.rows[0] ?? null;
   }
 }
