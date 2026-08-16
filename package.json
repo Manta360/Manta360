@@ -35,6 +35,7 @@
     "db:test-admin-user-detail": "tsx scripts/test-test-postgres-admin-user-detail.ts",
     "db:test-admin-properties": "tsx scripts/test-test-postgres-admin-properties.ts",
     "db:test-session-user": "tsx scripts/test-test-postgres-session-user.ts",
+    "db:test-auth-me": "tsx scripts/test-test-postgres-auth-me.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
