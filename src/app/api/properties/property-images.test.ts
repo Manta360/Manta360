@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: vi.fn() }));
+vi.mock("@/repositories/properties.server", () => ({ propertiesRepository: { findOwnedPropertyForImages: vi.fn(), listImagesForProperty: vi.fn() } }));
 vi.mock("@/lib/file-validation", () => ({ UploadValidationError: class UploadValidationError extends Error {}, validateUpload: vi.fn() }));
 vi.mock("@/lib/supabase/storage", () => ({
   PROPERTY_IMAGES_BUCKET: "property-images", createStorageSignedUrl: vi.fn().mockResolvedValue("https://signed/image"),
@@ -16,7 +17,8 @@ vi.mock("@/lib/prisma", () => ({
 
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
-import { removeStorageFile } from "@/lib/supabase/storage";
+import { createStorageSignedUrl, removeStorageFile } from "@/lib/supabase/storage";
+import { propertiesRepository } from "@/repositories/properties.server";
 import { GET, POST } from "@/app/api/properties/[propertyId]/images/route";
 import { DELETE, PATCH } from "@/app/api/properties/[propertyId]/images/[imageId]/route";
 
@@ -35,6 +37,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   session.mockResolvedValue(landlord);
   db.properties.findFirst.mockResolvedValue({ id: "property-1", status: "DISPONIBLE", approved: true });
+  vi.mocked(propertiesRepository.findOwnedPropertyForImages).mockResolvedValue({ id: "property-1" });
+  vi.mocked(propertiesRepository.listImagesForProperty).mockResolvedValue([image]);
   db.property_images.findMany.mockResolvedValue([image]);
   db.property_images.findFirst.mockResolvedValue(image);
   db.property_images.count.mockResolvedValue(4);
@@ -52,12 +56,38 @@ describe("KAN-40 - imágenes de propiedades propias", () => {
   it("devuelve imágenes privadas de una propiedad propia", async () => {
     const response = await GET(new Request("http://localhost/api/properties/property-1/images"), context);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ images: [{ id: image.id }] });
+    expect(propertiesRepository.findOwnedPropertyForImages).toHaveBeenCalledWith("property-1", landlord.sub);
+    expect(propertiesRepository.listImagesForProperty).toHaveBeenCalledWith("property-1");
+    expect(createStorageSignedUrl).toHaveBeenCalledWith("property-images", image.storagePath);
+    expect(response.headers.get("Cache-Control")).toBe("no-store, max-age=0");
+    await expect(response.json()).resolves.toEqual({ images: [{ id: image.id, url: "https://signed/image", isPrimary: true, displayOrder: 0 }] });
   });
 
   it("no permite consultar imágenes de propiedad ajena", async () => {
-    db.properties.findFirst.mockResolvedValue(null);
+    vi.mocked(propertiesRepository.findOwnedPropertyForImages).mockResolvedValue(null);
     expect((await GET(new Request("http://localhost"), context)).status).toBe(404);
+  });
+
+  it("preserves empty images and PostgreSQL ordering", async () => {
+    vi.mocked(propertiesRepository.listImagesForProperty).mockResolvedValue([]);
+    await expect((await GET(new Request("http://localhost"), context)).json()).resolves.toEqual({ images: [] });
+
+    vi.mocked(propertiesRepository.listImagesForProperty).mockResolvedValue([
+      image,
+      { ...image, id: "image-2", storagePath: "properties/p1/b.jpg", isPrimary: false, displayOrder: 1 },
+    ]);
+    await expect((await GET(new Request("http://localhost"), context)).json()).resolves.toMatchObject({ images: [{ id: "image-1" }, { id: "image-2" }] });
+  });
+
+  it("requires a session and returns a safe PostgreSQL error", async () => {
+    session.mockResolvedValue(null);
+    expect((await GET(new Request("http://localhost"), context)).status).toBe(401);
+
+    session.mockResolvedValue(landlord);
+    vi.mocked(propertiesRepository.listImagesForProperty).mockRejectedValueOnce(new Error("SELECT passwordHash FROM users at database-host"));
+    const response = await GET(new Request("http://localhost"), context);
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "No se pudieron cargar las imágenes" });
   });
 
   it("mantiene el máximo de doce imágenes", async () => {

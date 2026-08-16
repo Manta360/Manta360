@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { PropertyStatus } from "@prisma/client";
 import { getActiveSession } from "@/lib/server-auth";
 import { prisma } from "@/lib/prisma";
+import { propertiesRepository } from "@/repositories/properties.server";
 import { UploadValidationError, validateUpload } from "@/lib/file-validation";
 import {
   PROPERTY_IMAGES_BUCKET,
@@ -40,22 +41,24 @@ export async function GET(_request: Request, context: RouteContext) {
   const authorization = await requireLandlord();
   if ("error" in authorization) return authorization.error!;
   const { propertyId } = await context.params;
-  if (!await getOwnedProperty(propertyId, authorization.session.sub)) {
-    return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
-  }
+  try {
+    if (!await propertiesRepository.findOwnedPropertyForImages(propertyId, authorization.session.sub)) {
+      return NextResponse.json({ error: "Propiedad no encontrada" }, { status: 404 });
+    }
 
-  const images = await prisma.property_images.findMany({
-    where: { propertyId },
-    orderBy: [{ isPrimary: "desc" }, { displayOrder: "asc" }, { createdAt: "asc" }],
-  });
-  return NextResponse.json({
-    images: await Promise.all(images.map(async (image) => ({
-      id: image.id,
-      url: await createStorageSignedUrl(PROPERTY_IMAGES_BUCKET, image.storagePath),
-      isPrimary: image.isPrimary,
-      displayOrder: image.displayOrder,
-    }))),
-  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+    const images = await propertiesRepository.listImagesForProperty(propertyId);
+    return NextResponse.json({
+      images: await Promise.all(images.map(async (image) => ({
+        id: image.id,
+        url: await createStorageSignedUrl(PROPERTY_IMAGES_BUCKET, image.storagePath),
+        isPrimary: image.isPrimary,
+        displayOrder: image.displayOrder,
+      }))),
+    }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+  } catch (error) {
+    console.error("property images list error", error);
+    return NextResponse.json({ error: "No se pudieron cargar las imágenes" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request, context: RouteContext) {

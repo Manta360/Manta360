@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 
 export type MineImage = { id: string; storagePath: string; isPrimary: boolean; displayOrder: number };
+export type PropertyImageRead = { id: string; storagePath: string; isPrimary: boolean; displayOrder: number };
 export type MineProperty = { id: string; title: string; address: string; monthlyRent: string | number; bedrooms: number | null; bathrooms: number | null; description: string | null; latitude: string | number | null; longitude: string | number | null; status: string; approved: boolean; disableReason: string | null; createdAt: Date; updatedAt: Date; images: MineImage[]; services: string[]; amenities: string[] };
 export type CatalogProperty = { id: string; title: string; address: string; monthlyRent: string | number; status: string; description: string | null; bedrooms: number | null; bathrooms: number | null; latitude: string | number | null; longitude: string | number | null; landlord: { id: string; fullName: string }; createdAt: Date; updatedAt: Date; images: MineImage[]; services: string[]; amenities: string[] };
 export type CatalogPropertyFilters = { minPrice: number | null; maxPrice: number | null; services: string[] };
@@ -25,6 +26,20 @@ const FIND_MINE_BY_ID_SQL = `
   ${PROPERTY_WITH_RELATIONS_SQL}
   WHERE p.id = $1 AND p."landlordId" = $2
   LIMIT 1
+`;
+
+const FIND_OWNED_PROPERTY_FOR_IMAGES_SQL = `
+  SELECT p.id
+  FROM public.properties p
+  WHERE p.id = $1 AND p."landlordId" = $2
+  LIMIT 1
+`;
+
+const LIST_PROPERTY_IMAGES_SQL = `
+  SELECT i.id, i."storagePath", i."isPrimary", i."displayOrder"
+  FROM public.property_images i
+  WHERE i."propertyId" = $1
+  ORDER BY i."isPrimary" DESC, i."displayOrder" ASC, i."createdAt" ASC
 `;
 
 const CATALOG_PROPERTY_WITH_RELATIONS_SQL = `
@@ -65,6 +80,16 @@ export class PropertiesRepository {
   async findMineById(propertyId: string, landlordId: string): Promise<MineProperty | null> {
     const result = await this.executor.query<MineProperty>(FIND_MINE_BY_ID_SQL, [propertyId, landlordId]);
     return result.rows[0] ?? null;
+  }
+
+  async findOwnedPropertyForImages(propertyId: string, landlordId: string): Promise<{ id: string } | null> {
+    const result = await this.executor.query<{ id: string }>(FIND_OWNED_PROPERTY_FOR_IMAGES_SQL, [propertyId, landlordId]);
+    return result.rows[0] ?? null;
+  }
+
+  async listImagesForProperty(propertyId: string): Promise<PropertyImageRead[]> {
+    const result = await this.executor.query<PropertyImageRead>(LIST_PROPERTY_IMAGES_SQL, [propertyId]);
+    return result.rows;
   }
 
   async listCatalogProperties(filters: CatalogPropertyFilters): Promise<CatalogProperty[]> {
