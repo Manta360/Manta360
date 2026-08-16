@@ -12,27 +12,16 @@ vi.mock("@/lib/supabase/storage", () => ({
   uploadStorageFile: vi.fn(),
   removeStorageFile: vi.fn(),
 }));
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
-    identity_documents: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
-    $transaction: vi.fn(),
-  },
-}));
-vi.mock("@/repositories/identity.server", () => ({ identityRepository: { listDocumentsForUser: vi.fn() } }));
+vi.mock("@/repositories/identity.server", () => ({ identityRepository: { listDocumentsForUser: vi.fn(), findCurrentDuplicate: vi.fn() }, runIdentityTransaction: vi.fn() }));
 vi.mock("@/lib/identity-document-pg", () => ({ serializeIdentityDocument: vi.fn(async (item) => ({ ...item, fileSize: Number(item.fileSize), downloadUrl: "https://signed/document" })) }));
 
 import { getActiveSession } from "@/lib/server-auth";
 import { validateUpload } from "@/lib/file-validation";
-import { prisma } from "@/lib/prisma";
 import { uploadStorageFile } from "@/lib/supabase/storage";
-import { identityRepository } from "@/repositories/identity.server";
+import { identityRepository, runIdentityTransaction } from "@/repositories/identity.server";
 import { GET, POST } from "@/app/api/identity-documents/route";
 
 const session = vi.mocked(getActiveSession);
-const db = prisma as unknown as {
-  identity_documents: Record<string, ReturnType<typeof vi.fn>>;
-  $transaction: ReturnType<typeof vi.fn>;
-};
 const landlord = { sub: "user-1", email: "owner@test.com", role: "ARRENDADOR" as const, fullName: "Dueño" };
 const document = {
   id: "doc-1", documentType: "CEDULA", side: "FRENTE", originalName: "frente.jpg", extension: "jpg", mimeType: "image/jpeg",
@@ -50,11 +39,9 @@ function uploadRequest(side: "FRENTE" | "REVERSO") {
 beforeEach(() => {
   vi.clearAllMocks();
   session.mockResolvedValue(landlord);
-  db.identity_documents.findFirst.mockResolvedValue(null);
-  db.identity_documents.updateMany.mockResolvedValue({ count: 0 });
-  db.identity_documents.create.mockResolvedValue(document);
   vi.mocked(identityRepository.listDocumentsForUser).mockResolvedValue([document] as never);
-  db.$transaction.mockImplementation(async (operation: (tx: unknown) => Promise<unknown>) => operation({ identity_documents: db.identity_documents }));
+  vi.mocked(identityRepository.findCurrentDuplicate).mockResolvedValue(null);
+  vi.mocked(runIdentityTransaction).mockImplementation(async (operation) => operation({ replaceCurrentAndCreate: vi.fn().mockResolvedValue(document) } as never));
   vi.mocked(validateUpload).mockResolvedValue({ buffer: Buffer.from("document"), extension: "jpg", mimeType: "image/jpeg", fileSize: 12, sha256: "a".repeat(64), originalName: "frente.jpg" });
 });
 
@@ -91,23 +78,21 @@ describe("identidad - documentos por lado", () => {
     const second = await POST(uploadRequest("REVERSO"));
     expect(first.status).toBe(201);
     expect(second.status).toBe(201);
-    expect(db.identity_documents.findFirst).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: expect.objectContaining({ side: "FRENTE", isCurrent: true }) }));
-    expect(db.identity_documents.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({ where: expect.objectContaining({ side: "REVERSO", isCurrent: true }) }));
+    expect(identityRepository.findCurrentDuplicate).toHaveBeenNthCalledWith(1, landlord.sub, "CEDULA", "FRENTE", "a".repeat(64));
+    expect(identityRepository.findCurrentDuplicate).toHaveBeenNthCalledWith(2, landlord.sub, "CEDULA", "REVERSO", "a".repeat(64));
   });
 
   it("trata la misma carga activa como idempotente", async () => {
-    db.identity_documents.findFirst.mockResolvedValue(document);
+    vi.mocked(identityRepository.findCurrentDuplicate).mockResolvedValue(document as never);
     const response = await POST(uploadRequest("FRENTE"));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ alreadyUploaded: true, document: { id: document.id } });
     expect(uploadStorageFile).not.toHaveBeenCalled();
-    expect(db.identity_documents.create).not.toHaveBeenCalled();
+    expect(runIdentityTransaction).not.toHaveBeenCalled();
   });
 
   it("mantiene historial solo para el mismo tipo y lado", async () => {
     await POST(uploadRequest("REVERSO"));
-    expect(db.identity_documents.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { userId: landlord.sub, documentType: "CEDULA", side: "REVERSO", isCurrent: true },
-    }));
+    expect(runIdentityTransaction).toHaveBeenCalledOnce();
   });
 });
