@@ -49,6 +49,9 @@ export type AdminPropertiesResult = {
   stats: AdminPropertyStats;
 };
 
+export type AdminPropertyImage = { id: string; storagePath: string; isPrimary: boolean; displayOrder: number };
+export type AdminPropertyDetail = AdminProperty & { images: AdminPropertyImage[]; services: string[]; amenities: string[] };
+
 type AdminPropertyRow = Omit<AdminProperty, "monthlyRent" | "users_properties_landlordIdTousers"> & {
   monthlyRent: string | number;
   landlordUserId: string;
@@ -62,6 +65,7 @@ type AdminPropertyRow = Omit<AdminProperty, "monthlyRent" | "users_properties_la
 };
 
 type AdminPropertyStatsRow = Record<keyof AdminPropertyStats, string | number>;
+type AdminPropertyDetailRow = AdminPropertyRow & { images: AdminPropertyImage[]; services: string[]; amenities: string[] };
 
 export type AdminPropertiesSqlResult<Row> = { rows: Row[] };
 
@@ -112,6 +116,45 @@ const ADMIN_PROPERTY_STATS_SQL = `
     (SELECT COUNT(*)::text FROM public.contracts WHERE status = 'ACTIVO'::"ContractStatus") AS "activeContracts",
     (SELECT COUNT(*)::text FROM public.users WHERE role = 'ARRENDADOR'::"Role" AND active = false) AS "disabledLandlords",
     (SELECT COUNT(*)::text FROM public.properties WHERE status = 'INHABILITADO'::"PropertyStatus") AS "disabledProperties"
+`;
+
+const FIND_ADMIN_PROPERTY_DETAIL_SQL = `
+  SELECT
+    p.id,
+    p."landlordId" AS "landlordId",
+    p.title,
+    p.address,
+    p."monthlyRent"::text AS "monthlyRent",
+    p.status,
+    p."createdAt" AT TIME ZONE 'UTC' AS "createdAt",
+    p."updatedAt" AT TIME ZONE 'UTC' AS "updatedAt",
+    p.description,
+    p.bedrooms,
+    p.bathrooms,
+    p.latitude::text AS latitude,
+    p.longitude::text AS longitude,
+    p."createdBy" AS "createdBy",
+    p.approved,
+    p."approvedAt" AT TIME ZONE 'UTC' AS "approvedAt",
+    p."approvedBy" AS "approvedBy",
+    p."disabledAt" AT TIME ZONE 'UTC' AS "disabledAt",
+    p."disabledBy" AS "disabledBy",
+    p."disableReason" AS "disableReason",
+    u.id AS "landlordUserId",
+    u."fullName" AS "landlordFullName",
+    u.email AS "landlordEmail",
+    u.phone AS "landlordPhone",
+    u."nationalId" AS "landlordNationalId",
+    u.active AS "landlordActive",
+    u."disabledAt" AT TIME ZONE 'UTC' AS "landlordDisabledAt",
+    u."disableReason" AS "landlordDisableReason",
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id', i.id, 'storagePath', i."storagePath", 'isPrimary', i."isPrimary", 'displayOrder', i."displayOrder") ORDER BY i."isPrimary" DESC, i."displayOrder" ASC, i."createdAt" ASC) FROM public.property_images i WHERE i."propertyId" = p.id), '[]'::jsonb) AS images,
+    COALESCE((SELECT jsonb_agg(s.name ORDER BY ps."createdAt" ASC) FROM public.property_services ps JOIN public.service_catalog s ON s.id = ps."serviceId" WHERE ps."propertyId" = p.id), '[]'::jsonb) AS services,
+    COALESCE((SELECT jsonb_agg(a.name ORDER BY pa."createdAt" ASC) FROM public.property_amenities pa JOIN public.amenity_catalog a ON a.id = pa."amenityId" WHERE pa."propertyId" = p.id), '[]'::jsonb) AS amenities
+  FROM public.properties p
+  INNER JOIN public.users u ON u.id = p."landlordId"
+  WHERE p.id = $1
+  LIMIT 1
 `;
 
 function toNumber(value: string | number) {
@@ -167,6 +210,21 @@ export class AdminPropertiesRepository {
         disabledLandlords: stats ? toNumber(stats.disabledLandlords) : 0,
         disabledProperties: stats ? toNumber(stats.disabledProperties) : 0,
       },
+    };
+  }
+
+  async findDetailForMunicipality(id: string): Promise<AdminPropertyDetail | null> {
+    const result = await this.executor.query<AdminPropertyDetailRow>(FIND_ADMIN_PROPERTY_DETAIL_SQL, [id]);
+    const property = result.rows[0];
+    if (!property) return null;
+    return {
+      id: property.id, landlordId: property.landlordId, title: property.title, address: property.address,
+      monthlyRent: toNumber(property.monthlyRent), status: property.status, createdAt: property.createdAt, updatedAt: property.updatedAt,
+      description: property.description, bedrooms: property.bedrooms, bathrooms: property.bathrooms, latitude: property.latitude,
+      longitude: property.longitude, createdBy: property.createdBy, approved: property.approved, approvedAt: property.approvedAt,
+      approvedBy: property.approvedBy, disabledAt: property.disabledAt, disabledBy: property.disabledBy, disableReason: property.disableReason,
+      users_properties_landlordIdTousers: { id: property.landlordUserId, fullName: property.landlordFullName, email: property.landlordEmail, phone: property.landlordPhone, nationalId: property.landlordNationalId, active: property.landlordActive, disabledAt: property.landlordDisabledAt, disableReason: property.landlordDisableReason },
+      images: property.images ?? [], services: property.services ?? [], amenities: property.amenities ?? [],
     };
   }
 

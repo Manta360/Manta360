@@ -42,4 +42,18 @@ describe("AdminPropertiesRepository", () => {
       properties: [], stats: { users: 0, pendingProperties: 0, occupiedProperties: 0, activeContracts: 0, disabledLandlords: 0, disabledProperties: 0 },
     });
   });
+
+  it("loads a property detail by id with ordered image metadata, services and amenities", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ ...propertyRow, images: [{ id: "image-1", storagePath: "properties/property-1/image.webp", isPrimary: true, displayOrder: 0 }], services: ["Internet"], amenities: ["Piscina"] }] });
+    const result = await new AdminPropertiesRepository({ query }).findDetailForMunicipality("property-1");
+    expect(result).toMatchObject({ id: "property-1", monthlyRent: 750.5, services: ["Internet"], amenities: ["Piscina"], images: [{ id: "image-1", isPrimary: true }] });
+    const [sql, values] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('WHERE p.id = $1');
+    expect(sql).toContain('ORDER BY i."isPrimary" DESC, i."displayOrder" ASC');
+    expect(sql).toContain("property_services");
+    expect(sql).toContain("property_amenities");
+    expect(sql).not.toContain("users.*");
+    expect(sql).not.toContain("passwordHash");
+    expect(values).toEqual(["property-1"]);
+  });
 });
