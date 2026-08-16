@@ -3,6 +3,7 @@ import { z } from "zod";
 import { activeContractStatuses, isContractTransactionConflict, runContractTransaction } from "@/lib/contract-exclusivity";
 import { createTextId } from "@/lib/ids";
 import { getActiveSession } from "@/lib/server-auth";
+import { hasValidContractDateRange } from "@/lib/temporal-state-validation";
 
 const schema = z.object({ decision: z.enum(["APROBADO", "RECHAZADO"]) });
 
@@ -50,6 +51,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const contractId = createTextId();
       const startDate = item.startDate ?? now;
       const endDate = item.endDate ?? new Date(new Date(startDate).setFullYear(startDate.getFullYear() + 1));
+      if (!hasValidContractDateRange(startDate, endDate)) {
+        return { error: "La solicitud contiene un periodo contractual invalido", status: 409 };
+      }
       await tx.contracts.create({
         data: {
           id: contractId,
