@@ -9,6 +9,9 @@ vi.mock("@/lib/prisma", () => ({
     incident_reports: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   },
 }));
+vi.mock("@/repositories/incidents.server", () => ({
+  incidentsRepository: { findActiveContractForTenant: vi.fn(), create: vi.fn(), findForLandlord: vi.fn(), updateStatus: vi.fn() },
+}));
 
 import { PATCH as patchContract } from "@/app/api/contracts/[id]/route";
 import { POST as requestRenewal } from "@/app/api/contracts/[id]/renewal/route";
@@ -18,12 +21,19 @@ import { POST as createIncident } from "@/app/api/incident-reports/route";
 import { prisma } from "@/lib/prisma";
 import { getActiveSession } from "@/lib/server-auth";
 import { runContractTransaction } from "@/lib/contract-exclusivity";
+import { incidentsRepository } from "@/repositories/incidents.server";
 
 const mockedSession = vi.mocked(getActiveSession);
 const mockedPrisma = prisma as unknown as {
   contracts: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
   contract_renewal_requests: { findFirst: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn> };
   incident_reports: { findUnique: ReturnType<typeof vi.fn>; create: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+};
+const mockedIncidents = incidentsRepository as unknown as {
+  findActiveContractForTenant: ReturnType<typeof vi.fn>;
+  create: ReturnType<typeof vi.fn>;
+  findForLandlord: ReturnType<typeof vi.fn>;
+  updateStatus: ReturnType<typeof vi.fn>;
 };
 
 const contract = {
@@ -44,6 +54,10 @@ describe("KAN-44 - validaciones directas de API", () => {
     vi.clearAllMocks();
     mockedPrisma.contracts.findUnique.mockResolvedValue(contract as never);
     mockedPrisma.contracts.update.mockImplementation(async ({ data }) => ({ ...contract, ...data }));
+    mockedIncidents.findActiveContractForTenant.mockResolvedValue({ id: contract.id, propertyId: contract.propertyId, tenantId: contract.tenantId, landlordId: contract.landlordId, status: "ACTIVO" });
+    mockedIncidents.create.mockImplementation(async (data) => ({ id: data.id, ...data, status: "PENDIENTE", createdAt: new Date() }));
+    mockedIncidents.findForLandlord.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "PENDIENTE" });
+    mockedIncidents.updateStatus.mockImplementation(async (id, status, updatedAt) => ({ id, status, updatedAt }));
   });
 
   it("rechaza rangos contractuales iguales, invertidos y no parseables antes de escribir", async () => {
@@ -83,49 +97,40 @@ describe("KAN-44 - validaciones directas de API", () => {
 
   it("ignora una fecha de incidencia manipulada y registra la fecha del servidor", async () => {
     mockedSession.mockResolvedValue({ sub: "tenant-1", role: "ARRENDATARIO", email: "tenant@example.com", fullName: "Tenant" });
-    mockedPrisma.contracts.findUnique.mockResolvedValue({ ...contract, status: "ACTIVO" } as never);
-    mockedPrisma.incident_reports.create.mockImplementation(async ({ data }) => ({ id: "report-1", ...data }));
     const response = await createIncident(new Request("http://localhost/api/incident-reports", {
       method: "POST",
       body: JSON.stringify({ contractId: "contract-1", description: "Una descripción de incidencia válida", incidentDate: "2099-01-01T00:00:00.000Z" }),
     }));
     expect(response.status).toBe(201);
-    expect(mockedPrisma.incident_reports.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ incidentDate: expect.any(Date) }),
-    }));
-    const savedDate = mockedPrisma.incident_reports.create.mock.calls[0][0].data.incidentDate as Date;
+    expect(mockedIncidents.create).toHaveBeenCalledWith(expect.objectContaining({ incidentDate: expect.any(Date) }));
+    const savedDate = mockedIncidents.create.mock.calls[0][0].incidentDate as Date;
     expect(savedDate.toISOString()).not.toBe("2099-01-01T00:00:00.000Z");
   });
 
   it("solo permite las transiciones de incidencia previstas", async () => {
     mockedSession.mockResolvedValue({ sub: "landlord-1", role: "ARRENDADOR", email: "landlord@example.com", fullName: "Landlord" });
-    mockedPrisma.incident_reports.findUnique.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "PENDIENTE" } as never);
-    mockedPrisma.incident_reports.update.mockImplementation(async ({ data }) => ({ id: "report-1", ...data }));
-
     const allowed = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "EN_PROCESO" }) }), { params: Promise.resolve({ id: "report-1" }) });
     expect(allowed.status).toBe(200);
 
-    mockedPrisma.incident_reports.findUnique.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "RESUELTO" } as never);
+    mockedIncidents.findForLandlord.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "RESUELTO" });
     const rejected = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "EN_PROCESO" }) }), { params: Promise.resolve({ id: "report-1" }) });
     expect(rejected.status).toBe(409);
-    expect(mockedPrisma.incident_reports.update).toHaveBeenCalledTimes(1);
+    expect(mockedIncidents.updateStatus).toHaveBeenCalledTimes(1);
   });
 
   it("acepta las dos salidas oficiales desde PENDIENTE y bloquea reversiones", async () => {
     mockedSession.mockResolvedValue({ sub: "landlord-1", role: "ARRENDADOR", email: "landlord@example.com", fullName: "Landlord" });
-    mockedPrisma.incident_reports.update.mockImplementation(async ({ data }) => ({ id: "report-1", ...data }));
-
-    mockedPrisma.incident_reports.findUnique.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "PENDIENTE" } as never);
+    mockedIncidents.findForLandlord.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "PENDIENTE" });
     const resolvedFromPending = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "RESUELTO" }) }), { params: Promise.resolve({ id: "report-1" }) });
     expect(resolvedFromPending.status).toBe(200);
 
-    mockedPrisma.incident_reports.findUnique.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "EN_PROCESO" } as never);
+    mockedIncidents.findForLandlord.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "EN_PROCESO" });
     const resolvedFromInProgress = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "RESUELTO" }) }), { params: Promise.resolve({ id: "report-1" }) });
     const backToPending = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "PENDIENTE" }) }), { params: Promise.resolve({ id: "report-1" }) });
     expect(resolvedFromInProgress.status).toBe(200);
     expect(backToPending.status).toBe(409);
 
-    mockedPrisma.incident_reports.findUnique.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "RESUELTO" } as never);
+    mockedIncidents.findForLandlord.mockResolvedValue({ id: "report-1", landlordId: "landlord-1", status: "RESUELTO" });
     const reopenPending = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "PENDIENTE" }) }), { params: Promise.resolve({ id: "report-1" }) });
     const reopenInProgress = await patchIncident(new Request("http://localhost/api/incident-reports/report-1", { method: "PATCH", body: JSON.stringify({ status: "EN_PROCESO" }) }), { params: Promise.resolve({ id: "report-1" }) });
     expect(reopenPending.status).toBe(409);
