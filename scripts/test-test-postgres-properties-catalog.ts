@@ -29,16 +29,16 @@ async function main() {
     await client.query("INSERT INTO public.property_amenities (\"propertyId\",\"amenityId\") VALUES ($1,$2)", ["catalog-new", amenity.rows[0]!.id]);
 
     const repository = new PropertiesRepository(client as unknown as PropertiesSqlExecutor);
-    const catalog = await repository.listCatalogProperties({ minPrice: null, maxPrice: null, services: [] });
+    const catalog = await repository.listCatalogProperties({ location: null, minPrice: null, maxPrice: null, services: [] });
     if (catalog.map((property) => property.id).join("|") !== "catalog-new|catalog-old") throw new Error("La visibilidad o el orden del catalogo no coincide");
     const current = catalog[0]!;
     if (current.monthlyRent !== "200.25" || current.status !== "DISPONIBLE" || current.landlord.fullName !== "Catalog Owner") throw new Error("Decimal, estado o landlord no coinciden");
     if (current.images.map((image) => image.storagePath).join("|") !== "properties/catalog-primary.jpg|properties/catalog-secondary.jpg") throw new Error("El orden de imagenes no coincide");
     if (current.services.join("|") !== "Agua catalogo" || current.amenities.join("|") !== "Parqueo catalogo") throw new Error("Servicios o amenities no coinciden");
     if (JSON.stringify(current).includes("passwordHash") || JSON.stringify(current).includes("nationalId")) throw new Error("El catalogo expuso datos privados");
-    const filtered = await repository.listCatalogProperties({ minPrice: 150, maxPrice: 300, services: ["Agua catalogo"] });
+    const filtered = await repository.listCatalogProperties({ location: "Manta", minPrice: 150, maxPrice: 300, services: ["Agua catalogo"] });
     if (filtered.map((property) => property.id).join("|") !== "catalog-new") throw new Error("Los filtros existentes no coinciden");
-    if ((await repository.listCatalogProperties({ minPrice: null, maxPrice: null, services: ["No existe"] })).length !== 0) throw new Error("El filtro de servicios no respeta AND exacto");
+    if ((await repository.listCatalogProperties({ location: null, minPrice: null, maxPrice: null, services: ["No existe"] })).length !== 0) throw new Error("El filtro de servicios no respeta AND exacto");
 
     await client.query("ROLLBACK");
     console.log("POSTGRES PROPERTIES CATALOG INTEGRATION: OK");
