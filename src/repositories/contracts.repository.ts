@@ -1,4 +1,5 @@
 import type { QueryResultRow } from "pg";
+import { synchronizePropertyContractState } from "@/lib/property-contract-state";
 
 export type ContractUser = {
   id: string;
@@ -197,40 +198,19 @@ export class ContractsRepository {
 
   async reconcileExpiredContracts(now: Date): Promise<number> {
     const expired = await this.executor.query<ExpiredContract>(
-      'SELECT id, "propertyId" FROM public.contracts WHERE status IN (\'ACTIVO\', \'EN_RENOVACION\') AND "endDate" < $1',
+      'SELECT id, "propertyId" FROM public.contracts WHERE status IN (\'ACTIVO\', \'EN_RENOVACION\') AND "endDate" < $1 FOR UPDATE',
       [now],
     );
     let finalized = 0;
     for (const contract of expired.rows) {
       const updated = await this.executor.query<{ id: string }>(
-        'UPDATE public.contracts SET status = \'FINALIZADO\', "endedAt" = $2, "endedBy" = NULL, "updatedAt" = $2 WHERE id = $1 AND status IN (\'ACTIVO\', \'EN_RENOVACION\') AND "endDate" < $2 RETURNING id',
+        'UPDATE public.contracts SET status = \'FINALIZADO\'::"ContractStatus", "endedAt" = $2, "endedBy" = NULL, "updatedAt" = $2 WHERE id = $1 AND status IN (\'ACTIVO\', \'EN_RENOVACION\') AND "endDate" < $2 RETURNING id',
         [contract.id, now],
       );
       if (updated.rows.length !== 1) continue;
       finalized += 1;
-      await this.synchronizePropertyContractState(contract.propertyId, now);
+      await synchronizePropertyContractState(this.executor, contract.propertyId, now);
     }
     return finalized;
-  }
-
-  private async synchronizePropertyContractState(propertyId: string, now: Date) {
-    const property = await this.executor.query<{ id: string; status: string }>(
-      'SELECT id, status FROM public.properties WHERE id = $1',
-      [propertyId],
-    );
-    const current = property.rows[0];
-    if (!current || current.status === "MANTENIMIENTO" || current.status === "INHABILITADO") return false;
-
-    const effective = await this.executor.query<{ id: string }>(
-      'SELECT id FROM public.contracts WHERE "propertyId" = $1 AND status IN (\'ACTIVO\', \'EN_RENOVACION\') LIMIT 1',
-      [propertyId],
-    );
-    const expected = effective.rows.length > 0 ? "OCUPADO" : "DISPONIBLE";
-    if (current.status === expected) return false;
-    const changed = await this.executor.query<{ id: string }>(
-      'UPDATE public.properties SET status = $2::"PropertyStatus", "updatedAt" = $3 WHERE id = $1 AND status IN (\'DISPONIBLE\', \'OCUPADO\') RETURNING id',
-      [propertyId, expected, now],
-    );
-    return changed.rows.length === 1;
   }
 }

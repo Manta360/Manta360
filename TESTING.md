@@ -1,104 +1,95 @@
 # Suite de Pruebas Técnicas — Manta360
 
-Documentación formal de la suite de testing implementada en el marco de **KAN-28**: *Configuración de la Suite de Testing para Permisos Cruzados*.
+Documentación de las pruebas automatizadas del repositorio. Para el **guion de demo en vivo** y checklist de despliegue, ver también [`docs/pruebas-y-demo.md`](docs/pruebas-y-demo.md).
 
-## Introducción
+## Objetivos
 
-Esta suite tiene como propósito validar de forma automatizada tres pilares críticos del sistema:
+1. **Seguridad y permisos** — roles cruzados, IDOR y datos sensibles (KAN-28, KAN-61).
+2. **Ciclo de negocio** — terminación contractual y propiedad en `DISPONIBLE` (KAN-60).
+3. **Regresiones de API/UI** — rutas, repositorios y componentes críticos.
+4. **Rendimiento de mapa** — 100 pines en tiempo aceptable (KAN-28).
 
-1. **Seguridad de acceso**: que las rutas administrativas del Municipio no puedan ser ejecutadas por roles no autorizados.
-2. **Permisos cruzados**: que un `ARRENDADOR` (u otro rol distinto de `MUNICIPIO`) reciba respuestas `403 Forbidden`, mientras que el rol `MUNICIPIO` pueda operar con validaciones correctas (`400` ante datos inválidos, `200` ante operaciones válidas).
-3. **Rendimiento del mapa**: que el componente de mapa sea capaz de renderizar un volumen masivo de pines (100 propiedades) en un tiempo aceptable, sin provocar cuelgues.
+Las pruebas no sustituyen la revisión manual en navegador, pero reducen regresiones en autenticación, autorización y flujos contractuales.
 
-Las pruebas no sustituyen la revisión manual en navegador, pero actúan como red de seguridad continua para regresiones en autenticación, autorización y rendimiento de UI.
+## Stack
 
-## Stack Tecnológico
+| Herramienta | Uso |
+|-------------|-----|
+| **Vitest** | Unitarias / integración de handlers y componentes |
+| **React Testing Library + jsdom** | Tests `.tsx` |
+| **tsx + PostgreSQL (`PG_TEST_*`)** | Scripts E2E/integración reales (rollback) |
 
-| Herramienta | Uso en Manta360 |
-|-------------|-----------------|
-| **Vitest** | Runner de pruebas unitarias/integración (Node y jsdom). |
-| **React Testing Library** | Renderizado y consultas al DOM en componentes React. |
-| **jsdom** | Entorno de navegador simulado para tests `.tsx`. |
-| **@vitejs/plugin-react** | Soporte JSX/TSX dentro de Vitest. |
-| **@testing-library/jest-dom** | Matchers de aserción orientados al DOM. |
+### Estrategia de mocks (Vitest)
 
-### Estrategia de mocks
+- Sesión: `getActiveSession` / `getSession`.
+- Repositorios `.server` o `applicationPostgres.connect` según la ruta.
+- Mapa: mocks de `react-leaflet` / `leaflet` (`data-testid="map-pin"`).
+- **Prisma ya no se usa** en la aplicación ni en los tests nuevos.
 
-- **API admin**: se mockean `@/lib/server-auth` (`getActiveSession`) y `@/lib/prisma` con `vi.mock`, e invocamos los handlers de las rutas App Router directamente (sin levantar el servidor Next ni tocar la base de datos real).
-- **Mapa**: se mockean `react-leaflet` y `leaflet` para evitar la dependencia de tiles/WebGL en CI; cada `CircleMarker` se representa como un nodo `data-testid="map-pin"` verificable en el DOM.
+## Cómo ejecutar
 
-## Estructura de Pruebas
+```bash
+npm install
+npm test                 # toda la suite Vitest
+npm run test:watch       # modo watch
+```
 
-### `src/app/api/admin/admin-routes.test.ts`
+### KAN-61 — 12 escenarios de permisos/seguridad
 
-Pruebas de integración ligera sobre endpoints administrativos del Municipio.
+```bash
+npx vitest run src/tests/security-permissions.test.ts
+```
 
-Cobertura actual:
+Cobertura: visitante sin token, arrendatario vs propiedades, propiedad ajena, registro como `MUNICIPIO`, contrato/incidencia ajenos, renovación fuera de 15 días, propiedad ocupada/inhabilitada, arrendador inhabilitado, contratos duplicados y no exposición de `passwordHash`.
 
-| Caso | Rol simulado | Expectativa |
-|------|--------------|-------------|
-| Inhabilitar propiedad (`PATCH .../disable`) | `ARRENDADOR` | `403 Forbidden` |
-| Listar arrendadores (`GET /api/admin/users`) | `ARRENDADOR` | `403 Forbidden` |
-| Inhabilitar sin motivo válido | `MUNICIPIO` | `400 Bad Request` |
-| Inhabilitar con motivo válido | `MUNICIPIO` | `200 OK` + propiedad `INHABILITADO` |
+### KAN-60 — E2E API happy path (PostgreSQL de prueba)
 
-Estas pruebas protegen el flujo de **KAN-31** (inhabilitación) frente a accesos cruzados indebidos.
+Requiere `PG_TEST_*` en `.env`:
 
-### `src/components/map-render.test.tsx`
+```bash
+npm run db:check-test
+npm run db:test-e2e-happy-path
+```
 
-Prueba de rendimiento del componente `src/components/Map.tsx`.
+Flujo: arrendador → propiedad → aprobación municipal → catálogo → arrendatario → buscar → solicitar → aceptar → contrato → `OCUPADO` → queja → resolver → municipio ve todo → terminar → **`DISPONIBLE`** (todo en `BEGIN`/`ROLLBACK`).
 
-- Inyecta un mock de **100 propiedades**.
-- Verifica que se rendericen **100 pines** en el DOM.
-- Exige que el renderizado complete en **menos de 2000 ms**.
+### Otros scripts útiles de integración
 
-### Otras pruebas existentes
+```bash
+npm run db:test-contracts
+npm run db:test-admin-stats
+# ver package.json → scripts db:test-*
+```
 
-| Archivo | Alcance |
-|---------|---------|
-| `src/lib/validations/auth.test.ts` | Validaciones de registro, hashing de contraseñas y restricciones de rutas por rol (KAN-10). |
+## Mapa de suites relevantes
+
+| Ubicación | Alcance |
+|-----------|---------|
+| `src/tests/security-permissions.test.ts` | KAN-61 — 12 escenarios de seguridad |
+| `scripts/test-e2e-happy-path.ts` | KAN-60 — E2E integración |
+| `src/app/api/admin/admin-routes.test.ts` | Permisos admin / inhabilitación (KAN-28/31) |
+| `src/components/map-render.test.tsx` | 100 pines &lt; 2 s |
+| `src/lib/property-contract-state.test.ts` | Sync contrato ↔ propiedad |
+| `src/app/api/contracts/contract-termination.test.ts` | Terminación API |
+| `src/**/*.test.ts(x)` | Resto de regresiones por módulo |
 
 ## Configuración
 
-Archivos de soporte en la raíz del repositorio:
+- `vitest.config.ts` — plugin React, alias `@/`, jsdom para `.tsx`.
+- `vitest.setup.ts` — `@testing-library/jest-dom/vitest`.
 
-- `vitest.config.ts` — plugin React, alias `@/`, `environmentMatchGlobs` (`.test.tsx` → jsdom, resto → node) y `setupFiles`.
-- `vitest.setup.ts` — carga de `@testing-library/jest-dom/vitest`.
+## Criterios de aceptación
 
-## Instrucciones de Ejecución
-
-Desde la raíz del proyecto (`Manta360`):
-
-```bash
-# Instalar dependencias (incluye las de testing)
-npm install
-
-# Ejecutar toda la suite una vez (CI / verificación)
-npm test
-```
-
-Modo watch (desarrollo):
-
-```bash
-npm run test:watch
-```
-
-Resultado esperado en un entorno sano:
-
-```text
-Test Files  3 passed (3)
-     Tests  9 passed (9)
-```
-
-## Criterios de aceptación (KAN-28)
-
-- [x] Suite configurada con Vitest + React Testing Library + jsdom.
-- [x] Pruebas de permisos cruzados en rutas admin (403 / 400 / 200).
-- [x] Prueba de rendimiento del mapa (100 pines &lt; 2 s).
-- [x] Comando único documentado: `npm test`.
+- [x] Vitest + RTL + jsdom configurados (KAN-28).
+- [x] Permisos cruzados admin (KAN-28/31).
+- [x] Rendimiento del mapa (KAN-28).
+- [x] Suite de seguridad de 12 escenarios (KAN-61).
+- [x] E2E happy path hasta `DISPONIBLE` (KAN-60).
+- [x] Comando único de Vitest: `npm test`.
 
 ## Notas para el equipo
 
-- No se requiere base de datos ni sesión real para correr estas pruebas: todo se mockea.
-- Si se agregan nuevos endpoints admin, se recomienda extender `admin-routes.test.ts` con casos `403` (rol no municipal) y `200`/`400` (rol municipal).
-- El umbral de 2000 ms del mapa es orientativo para máquinas de desarrollo/CI locales; si el entorno es más lento de forma consistente, documentar el nuevo umbral antes de relajarlo.
+- La mayoría de Vitest **no** necesita BD real (mocks).
+- El E2E KAN-60 **sí** necesita `PG_TEST_*` al proyecto de prueba autorizado.
+- Al agregar endpoints sensibles, extender `security-permissions.test.ts` o el test de la ruta.
+- El umbral de 2000 ms del mapa es orientativo; si CI es más lento de forma estable, documentar el nuevo umbral antes de relajarlo.
