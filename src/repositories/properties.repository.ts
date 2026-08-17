@@ -4,7 +4,12 @@ export type MineImage = { id: string; storagePath: string; isPrimary: boolean; d
 export type PropertyImageRead = { id: string; storagePath: string; isPrimary: boolean; displayOrder: number };
 export type MineProperty = { id: string; title: string; address: string; monthlyRent: string | number; bedrooms: number | null; bathrooms: number | null; description: string | null; latitude: string | number | null; longitude: string | number | null; status: string; approved: boolean; disableReason: string | null; createdAt: Date; updatedAt: Date; images: MineImage[]; services: string[]; amenities: string[] };
 export type CatalogProperty = { id: string; title: string; address: string; monthlyRent: string | number; status: string; description: string | null; bedrooms: number | null; bathrooms: number | null; latitude: string | number | null; longitude: string | number | null; landlord: { id: string; fullName: string }; createdAt: Date; updatedAt: Date; images: MineImage[]; services: string[]; amenities: string[] };
-export type CatalogPropertyFilters = { minPrice: number | null; maxPrice: number | null; services: string[] };
+export type CatalogPropertyFilters = {
+  location: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  services: string[];
+};
 export type PropertiesSqlResult<Row> = { rows: Row[] };
 export interface PropertiesSqlExecutor { query<Row extends QueryResultRow>(text: string, values?: unknown[]): Promise<PropertiesSqlResult<Row>>; }
 export type PropertyWriteInput = {
@@ -71,7 +76,15 @@ const FIND_PROPERTY_FOR_RESPONSE_SQL = `
 
 function catalogQuery(filters: CatalogPropertyFilters) {
   const values: unknown[] = [];
-  const clauses = ["p.status = 'DISPONIBLE'::\"PropertyStatus\"", "p.approved = true"];
+  const clauses = [
+    "p.status = 'DISPONIBLE'::\"PropertyStatus\"",
+    "p.approved = true",
+    "u.active = true",
+  ];
+  if (filters.location) {
+    values.push(filters.location);
+    clauses.push(`p.address ILIKE '%' || $${values.length} || '%'`);
+  }
   if (filters.minPrice !== null) {
     values.push(filters.minPrice);
     clauses.push(`p."monthlyRent" >= $${values.length}`);

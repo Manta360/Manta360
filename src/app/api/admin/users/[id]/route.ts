@@ -75,11 +75,16 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const landlord = await adminUsersRepository.findLandlordById(id);
-  if (!landlord) {
-    return NextResponse.json({ error: "Arrendador no encontrado" }, { status: 404 });
+  const user = await adminUsersRepository.findManagedUserById(id);
+  if (!user) {
+    return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
   }
-  return NextResponse.json({ landlord: serializeLandlordDetail(landlord) });
+  const serialized = serializeLandlordDetail(user);
+  return NextResponse.json({
+    user: serialized,
+    // Compatibilidad con la vista histórica de arrendadores.
+    ...(user.role === "ARRENDADOR" ? { landlord: serialized } : {}),
+  });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {

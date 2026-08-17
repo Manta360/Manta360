@@ -1,2 +1,5 @@
-import { MunicipalityWorkspace } from "@/components/municipality-workspace";
-export default function MunicipalityLandlordsPage() { return <MunicipalityWorkspace module="landlords" />; }
+import { redirect } from "next/navigation";
+
+export default function MunicipalityLandlordsRedirectPage() {
+  redirect("/panel/municipio/usuarios");
+}

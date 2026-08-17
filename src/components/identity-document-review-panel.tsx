@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { notifyNavigationBadgesChanged } from "@/components/layout/navigation-badges";
 import { Button, EmptyState, ErrorState, LoadingState, StatusBadge } from "@/components/ui";
 
 type Document = { id: string; user: { id: string; fullName: string; email: string }; documentType: "CEDULA" | "PASAPORTE"; side: string; originalName: string; verificationStatus: string; downloadUrl: string | null };
@@ -35,6 +36,7 @@ export function IdentityDocumentReviewPanel() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "No se pudo actualizar el documento");
       await load();
+      notifyNavigationBadgesChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo actualizar el documento"); }
     finally { setBusy(null); }
   };

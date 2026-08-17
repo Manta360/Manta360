@@ -34,20 +34,55 @@ function formStringArray(formData: FormData, name: string): string[] | null {
   }
 }
 
+function parseCatalogPrice(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseCatalogServices(value: string | null): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function hasAdvancedCatalogFilters(filters: {
+  location: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  services: string[];
+}) {
+  return Boolean(filters.location || filters.minPrice !== null || filters.maxPrice !== null || filters.services.length > 0);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const minPriceParam = url.searchParams.get("minPrice");
-  const maxPriceParam = url.searchParams.get("maxPrice");
-  const minPrice = minPriceParam === null ? null : Number(minPriceParam);
-  const maxPrice = maxPriceParam === null ? null : Number(maxPriceParam);
-  const services = (url.searchParams.get("services") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const locationRaw = url.searchParams.get("location")?.trim() ?? "";
+  const requestedFilters = {
+    location: locationRaw.length > 0 ? locationRaw : null,
+    minPrice: parseCatalogPrice(url.searchParams.get("minPrice")),
+    maxPrice: parseCatalogPrice(url.searchParams.get("maxPrice")),
+    services: parseCatalogServices(url.searchParams.get("services")),
+  };
+
+  const session = await getActiveSession();
+  const canUseAdvancedFilters = session?.role === "ARRENDATARIO";
+
+  // Visitantes (y roles distintos de arrendatario) solo ven el catálogo público básico.
+  // Los filtros avanzados requieren sesión de arrendatario.
+  if (hasAdvancedCatalogFilters(requestedFilters) && !canUseAdvancedFilters) {
+    return NextResponse.json(
+      { error: "Los filtros avanzados solo estan disponibles para arrendatarios autenticados" },
+      { status: 403 },
+    );
+  }
+
   // El catálogo público mantiene la propiedad visible durante conversaciones y
   // solicitudes; solo se retira cuando el contrato queda formalizado.
-  const filters = {
-    minPrice: minPrice !== null && Number.isFinite(minPrice) && minPrice >= 0 ? minPrice : null,
-    maxPrice: maxPrice !== null && Number.isFinite(maxPrice) && maxPrice >= 0 ? maxPrice : null,
-    services,
-  };
+  const filters = canUseAdvancedFilters
+    ? requestedFilters
+    : { location: null, minPrice: null, maxPrice: null, services: [] };
 
   try {
     const properties = await propertiesRepository.listCatalogProperties(filters);
