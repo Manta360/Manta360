@@ -16,7 +16,7 @@ Plataforma web para la gestión de arriendos en **Manta, Ecuador**. Integra en u
 | | |
 |---|---|
 | **Repositorio** | https://github.com/Manta360/Manta360 |
-| **Tablero Jira (planeación)** | https://manta360.atlassian.net |
+| **Tablero Jira (planeación)** | https://manta360.atlassian.net/jira/software/projects/KAN/summary |
 | **Script de BD (rúbrica)** | [`database/BDD.sql`](database/BDD.sql) |
 | **Documentación técnica** | [`docs/`](docs/) |
 | **URL / IP de producción** | _Completar por el equipo al desplegar_ |
@@ -61,7 +61,7 @@ Arrendador publica → Municipio aprueba propiedad → Visitante/Arrendatario ve
 ## 2. Arquitectura y metodología
 
 - **Metodología:** Scrum/Kanban con Jira (épicas `KAN-*`), ramas `feature/KAN-*` y Pull Requests a `main`.
-- **Tablero de planeación:** [manta360.atlassian.net](https://manta360.atlassian.net) — evidencia del flujo metodológico grupal (épicas, sprints/estados y asignación).
+- **Tablero de planeación:** [manta360.atlassian.net/jira/software/projects/KAN/summary](https://manta360.atlassian.net/jira/software/projects/KAN/summary) — evidencia del flujo metodológico grupal (épicas, sprints/estados y asignación).
 - **Estilo:** monolito modular (Next.js App Router + repositorios PostgreSQL). Sin microservicios.
 - **Stack:** Next.js 15, React 19, TypeScript, PostgreSQL (`pg`), Supabase Storage, Tailwind, Zod, bcrypt, Vitest.
 

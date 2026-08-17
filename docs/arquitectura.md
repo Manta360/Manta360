@@ -6,7 +6,7 @@ Documento técnico para la rúbrica de **Desarrollo de Sistemas de Información*
 
 El equipo trabaja con **Scrum / Kanban** sobre Jira (proyecto `KAN`): épicas, historias y tareas con estados visibles, ramas `feature/KAN-*` y Pull Requests hacia `main`.
 
-**Tablero público del equipo:** [https://manta360.atlassian.net](https://manta360.atlassian.net)
+**Tablero público del equipo:** [https://manta360.atlassian.net/jira/software/projects/KAN/summary](https://manta360.atlassian.net/jira/software/projects/KAN/summary)
 
 ## Vista lógica (capas)
 
