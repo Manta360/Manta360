@@ -59,11 +59,10 @@ export class AdminStatsRepository {
   constructor(private readonly executor: AdminStatsSqlExecutor) {}
 
   async getStatistics(): Promise<AdminStatistics> {
-    const [propertiesResult, incidentsResult, landlordsResult] = await Promise.all([
-      this.executor.query<PropertyRow>(PROPERTIES_SQL),
-      this.executor.query<IncidentRow>(INCIDENTS_SQL),
-      this.executor.query<LandlordRow>(TOP_LANDLORDS_SQL),
-    ]);
+    // Sequential queries: one checkout at a time under Supabase Session Pooler limits.
+    const propertiesResult = await this.executor.query<PropertyRow>(PROPERTIES_SQL);
+    const incidentsResult = await this.executor.query<IncidentRow>(INCIDENTS_SQL);
+    const landlordsResult = await this.executor.query<LandlordRow>(TOP_LANDLORDS_SQL);
 
     const zones = new Map<string, { count: number; totalRentCents: bigint }>();
     for (const property of propertiesResult.rows) {

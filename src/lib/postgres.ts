@@ -36,11 +36,12 @@ export const postgres =
   new Pool({
     ...testPostgresConfig,
     ssl: { rejectUnauthorized: false },
+    max: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPostgres.manta360TestPostgresPool = postgres;
-}
+globalForPostgres.manta360TestPostgresPool = postgres;
 
 export function queryPostgres<Row extends QueryResultRow = QueryResultRow>(
   text: string,

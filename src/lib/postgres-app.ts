@@ -3,6 +3,9 @@ import "dotenv/config";
 
 const APPLICATION_PROJECT_REF = "ycerwszvzkmyisflxkpe";
 
+/** Keep well under Supabase Session Pooler ~15 client cap (shared by local + Vercel). */
+const APPLICATION_POOL_MAX = 3;
+
 function requiredApplicationEnv(name: "PG_APP_HOST" | "PG_APP_PORT" | "PG_APP_DATABASE" | "PG_APP_USER" | "PG_APP_PASSWORD" | "PG_APP_PROJECT_REF"): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} es obligatoria para la conexión PostgreSQL de aplicación`);
@@ -32,9 +35,15 @@ type GlobalApplicationPostgres = typeof globalThis & { manta360ApplicationPostgr
 const globalForApplicationPostgres = globalThis as GlobalApplicationPostgres;
 
 /** Shared application pool. It never falls back to DATABASE_URL. */
-export const applicationPostgres = globalForApplicationPostgres.manta360ApplicationPostgresPool ?? new Pool({
-  ...appPostgresConfig,
-  ssl: { rejectUnauthorized: false },
-});
+export const applicationPostgres =
+  globalForApplicationPostgres.manta360ApplicationPostgresPool ??
+  new Pool({
+    ...appPostgresConfig,
+    ssl: { rejectUnauthorized: false },
+    max: APPLICATION_POOL_MAX,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+  });
 
-if (process.env.NODE_ENV !== "production") globalForApplicationPostgres.manta360ApplicationPostgresPool = applicationPostgres;
+// Reuse across hot reload (dev) and serverless isolates (Vercel).
+globalForApplicationPostgres.manta360ApplicationPostgresPool = applicationPostgres;
