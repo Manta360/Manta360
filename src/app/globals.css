@@ -5,34 +5,34 @@
 
 :root {
   /* Brand and semantic color tokens. Keep domain state labels separate from UI color. */
-  --navy: #003366;
-  --blue: #0055a5;
-  --sky: #00a3e0;
-  --orange: #f37021;
-  --violet: #6a2a88;
+  --navy: #123b5d;
+  --blue: #1f6fa8;
+  --sky: #37a6c8;
+  --orange: #f28c28;
+  --violet: #64748b;
 
-  --background: #f6f8fb;
-  --foreground: #102a43;
+  --background: #f7f9fb;
+  --foreground: #1f2937;
   --surface: #ffffff;
-  --surface-subtle: #eef4f8;
+  --surface-subtle: #f1f5f8;
   --canvas: var(--background);
-  --muted: #526273;
-  --muted-foreground: #62758a;
-  --border: #d7e2ec;
+  --muted: #64748b;
+  --muted-foreground: #64748b;
+  --border: #dce5eb;
   --line: var(--border);
 
   --primary: var(--blue);
   --primary-foreground: #ffffff;
   --accent: var(--orange);
   --accent-foreground: #ffffff;
-  --info: #1479b8;
-  --info-foreground: #073c62;
-  --success: #137a4b;
-  --success-foreground: #075c37;
-  --warning: #a65b00;
-  --warning-foreground: #713b00;
-  --danger: #b42318;
-  --danger-foreground: #8a1c14;
+  --info: #1f6fa8;
+  --info-foreground: #123b5d;
+  --success: #2e9b69;
+  --success-foreground: #1f7a51;
+  --warning: #d9972f;
+  --warning-foreground: #8a5b16;
+  --danger: #d9534f;
+  --danger-foreground: #a63d3a;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -47,10 +47,10 @@
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
-  --shadow-sm: 0 1px 2px rgb(16 42 67 / 8%);
-  --shadow-md: 0 8px 24px rgb(16 42 67 / 10%);
-  --shadow-lg: 0 20px 45px rgb(16 42 67 / 14%);
-  --focus-ring: 0 0 0 4px rgb(0 163 224 / 24%);
+  --shadow-sm: 0 1px 3px rgb(18 59 93 / 7%);
+  --shadow-md: 0 8px 24px rgb(18 59 93 / 8%);
+  --shadow-lg: 0 20px 45px rgb(18 59 93 / 12%);
+  --focus-ring: 0 0 0 4px rgb(55 166 200 / 24%);
 }
 
 @theme inline {
@@ -93,11 +93,13 @@ body {
   color: var(--foreground);
   font-family: var(--font-manrope), Arial, sans-serif;
 }
+.font-black { font-weight: 700; }
+.font-extrabold { font-weight: 600; }
 a { color: inherit; text-decoration: none; }
 input, select, button, textarea { font: inherit; }
 button, [role="button"] { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-::selection { background: #00a3e0; color: white; }
+::selection { background: #37a6c8; color: white; }
 
 .app-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
 .app-card:hover { box-shadow: var(--shadow-md); }
@@ -110,8 +112,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   place-items: center;
   border: 3px solid white;
   border-radius: 999px;
-  background: #f37021;
-  box-shadow: 0 2px 8px rgb(0 51 102 / 35%);
+  background: #f28c28;
+  box-shadow: 0 2px 8px rgb(18 59 93 / 35%);
   color: white;
   font-size: 12px;
 }
@@ -121,8 +123,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   place-items: center;
   border: 3px solid white;
   border-radius: 999px;
-  background: #f37021;
-  box-shadow: 0 2px 8px rgb(0 51 102 / 35%);
+  background: #f28c28;
+  box-shadow: 0 2px 8px rgb(18 59 93 / 35%);
   color: white;
   font-size: 13px;
 }
@@ -133,7 +135,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border-radius: 0.75rem;
   background: white;
   padding: 0.75rem 1rem;
-  color: #003366;
+  color: #123b5d;
   outline: none;
   transition: border-color 150ms, box-shadow 150ms;
 }
