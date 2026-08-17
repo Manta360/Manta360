@@ -1,23 +1,114 @@
 # Manta360
 
-Plataforma web para la gestión segura de arriendos en Manta, Ecuador. Conecta arrendatarios, arrendadores y Municipio para publicar inmuebles, verificar identidad, gestionar contratos, renovaciones, incidencias y comunicación privada.
+<table>
+  <tr>
+    <td>
+      <strong>Pontificia Universidad Católica del Ecuador — Sede Manabí</strong><br/>
+      Carrera de Ingeniería de Software<br/>
+      Asignatura: Desarrollo de Sistemas de Información · Período 2026-1<br/>
+      Docente: Ing. José Naranjo, M.Eng.
+    </td>
+  </tr>
+</table>
 
-## Tecnología
+Plataforma web para la gestión de arriendos en **Manta, Ecuador**. Integra en una sola aplicación a **visitantes**, **arrendatarios**, **arrendadores** y **Municipio**: publicación de inmuebles, búsqueda, contratos, renovaciones, quejas/mantenimiento, estadísticas e inhabilitación administrativa.
 
-- Next.js 15, React 19 y TypeScript
-- PostgreSQL directo mediante `pg` (node-postgres)
-- Supabase Storage
-- Tailwind CSS, Leaflet/OpenStreetMap, Zod y bcrypt
+| | |
+|---|---|
+| **Repositorio** | https://github.com/Manta360/Manta360 |
+| **Tablero Jira (planeación)** | https://manta360.atlassian.net |
+| **Script de BD (rúbrica)** | [`database/BDD.sql`](database/BDD.sql) |
+| **Documentación técnica** | [`docs/`](docs/) |
+| **URL / IP de producción** | _Completar por el equipo al desplegar_ |
 
-Prisma ya no forma parte de la aplicación: el esquema canónico está en [database/schema.sql](database/schema.sql).
+---
 
-## Requisitos
+## Tabla de contenidos
 
-- Node.js 20 o superior
-- npm 10 o superior
-- Un proyecto Supabase PostgreSQL y Storage autorizado
+1. [Funcionamiento general](#1-funcionamiento-general)
+2. [Arquitectura y metodología](#2-arquitectura-y-metodología)
+3. [Modelo de datos y BDD.sql](#3-modelo-de-datos-y-bddsql)
+4. [Entorno reproducible (instalación local)](#4-entorno-reproducible-instalación-local)
+5. [Despliegue en producción (IP pública)](#5-despliegue-en-producción-ip-pública)
+6. [Manual por rol](#6-manual-por-rol)
+7. [Pruebas automatizadas y demo](#7-pruebas-automatizadas-y-demo)
+8. [Estructura del repositorio](#8-estructura-del-repositorio)
+9. [Documentación adicional](#9-documentación-adicional)
 
-## Instalación
+---
+
+## 1. Funcionamiento general
+
+Manta360 cumple los módulos del enunciado oficial del proyecto:
+
+1. Registro y autenticación (arrendador / arrendatario; municipio por seed en BD).
+2. Gestión de propiedades (crear, editar, eliminar con validaciones, cambiar estado).
+3. Solicitudes y contratos (aceptación, PDF, terminación, renovación en ventana de 15 días).
+4. Quejas y mantenimiento (pendiente / en proceso / resuelto).
+5. Búsqueda y disponibilidad (visitante: catálogo básico; arrendatario: filtros).
+6. Panel municipal (listados, estadísticas por zona, inhabilitación).
+
+Flujo de negocio resumido:
+
+```text
+Arrendador publica → Municipio aprueba propiedad → Visitante/Arrendatario ve catálogo
+→ Solicitud → Aceptación → Firmas → Aprobación municipal → Contrato ACTIVO (OCUPADO)
+→ Quejas / renovación / terminación → Propiedad DISPONIBLE
+```
+
+---
+
+## 2. Arquitectura y metodología
+
+- **Metodología:** Scrum/Kanban con Jira (épicas `KAN-*`), ramas `feature/KAN-*` y Pull Requests a `main`.
+- **Tablero de planeación:** [manta360.atlassian.net](https://manta360.atlassian.net) — evidencia del flujo metodológico grupal (épicas, sprints/estados y asignación).
+- **Estilo:** monolito modular (Next.js App Router + repositorios PostgreSQL). Sin microservicios.
+- **Stack:** Next.js 15, React 19, TypeScript, PostgreSQL (`pg`), Supabase Storage, Tailwind, Zod, bcrypt, Vitest.
+
+Diagrama de arquitectura (Mermaid): ver [`docs/arquitectura.md`](docs/arquitectura.md).
+
+```mermaid
+flowchart TB
+  UI[UI Next.js por rol] --> API[Route Handlers /api]
+  API --> REPO[repositories/]
+  REPO --> PG[(PostgreSQL)]
+  API --> ST[(Storage)]
+```
+
+---
+
+## 3. Modelo de datos y BDD.sql
+
+Entregable de rúbrica: **[`database/BDD.sql`](database/BDD.sql)**
+
+Incluye el esquema **completo** (todas las tablas del sistema: usuarios, propiedades, catálogos, imágenes, solicitudes, contratos, renovaciones, quejas, identidad, chat) más un **seed mínimo** de demostración.
+
+| Usuario demo | Rol | Contraseña |
+|--------------|-----|------------|
+| `municipio@manta360.demo` | MUNICIPIO | `Demo1234!` |
+| `arrendador@manta360.demo` | ARRENDADOR | `Demo1234!` |
+| `arrendatario@manta360.demo` | ARRENDATARIO | `Demo1234!` |
+
+También se inserta una propiedad **aprobada** en Centro de Manta (visible en catálogo) y un contrato/queja históricos para historial.
+
+Diagrama DER **completo** (14 tablas): [`docs/modelo-datos.md`](docs/modelo-datos.md).  
+Bootstrap sin seed (uso diario del equipo): [`database/schema.sql`](database/schema.sql).
+
+```bash
+psql "postgresql://USER:PASS@HOST:5432/postgres?sslmode=require" -f database/BDD.sql
+```
+
+---
+
+## 4. Entorno reproducible (instalación local)
+
+### Requisitos
+
+- Node.js 20+ / npm 10+
+- PostgreSQL accesible (Session Pooler Supabase puerto `5432` recomendado)
+- Buckets de Storage privados
+
+### Instalación
 
 ```bash
 git clone https://github.com/Manta360/Manta360.git
@@ -25,123 +116,126 @@ cd Manta360
 npm install
 ```
 
-Copia el archivo de configuración:
-
-```bash
-cp .env.example .env
-```
-
-En PowerShell:
-
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Nunca subas `.env` al repositorio.
+Configura las variables documentadas en [`.env.example`](.env.example):
 
-## Variables de entorno
-
-La aplicación usa exclusivamente `PG_APP_*`; no existe fallback a `DATABASE_URL`.
-
-```env
-PG_APP_HOST="aws-0-[REGION].pooler.supabase.com"
-PG_APP_PORT="5432"
-PG_APP_DATABASE="postgres"
-PG_APP_USER="postgres.ycerwszvzkmyisflxkpe"
-PG_APP_PASSWORD="clave-de-aplicacion"
-PG_APP_PROJECT_REF="ycerwszvzkmyisflxkpe"
-
-AUTH_SECRET="usa-una-clave-larga-y-privada"
-
-SUPABASE_URL="https://TU-PROYECTO.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY="clave-secreta-solo-del-servidor"
-```
-
-- `PG_APP_*` usa el Session Pooler de Supabase por el puerto `5432`.
-- `PG_APP_PROJECT_REF` se valida al iniciar para impedir conexiones accidentales a otro proyecto. El target actual autorizado es `manta360prueba` (`ycerwszvzkmyisflxkpe`).
-- Las pruebas de integración usan variables separadas `PG_TEST_*`.
-- El bootstrap de Storage temporal usa `SUPABASE_TEST_URL` y `SUPABASE_TEST_SERVICE_ROLE_KEY`.
-- Nunca expongas `SUPABASE_SERVICE_ROLE_KEY` ni `SUPABASE_TEST_SERVICE_ROLE_KEY` mediante variables `NEXT_PUBLIC_*`.
-
-Consulta [.env.example](.env.example) para el inventario completo, incluidos los valores de prueba y `MUNICIPIO_PASSWORD`.
-
-## Base de datos
-
-`database/schema.sql` es la fuente canónica del esquema PostgreSQL. Incluye tablas, enums, claves, índices, restricciones contractuales y los checks históricos de Properties.
-
-Antes de ejecutar procesos que escriban, valida la conexión de aplicación:
+| Variable | Uso |
+|----------|-----|
+| `PG_APP_*` | PostgreSQL de la aplicación (obligatorio) |
+| `PG_TEST_*` | PostgreSQL para E2E/integración |
+| `AUTH_SECRET` | Firma del JWT de sesión |
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Storage de aplicación |
+| `MUNICIPIO_PASSWORD` | Solo para `npm run db:seed-municipio` |
 
 ```bash
 npm run db:check-app
+npm run dev
 ```
 
-La comprobación verifica el project ref esperado y ejecuta un INSERT dentro de `BEGIN`/`ROLLBACK`; no deja datos persistentes.
+Abre `http://localhost:3000`.
 
-## Storage
+Migraciones futuras (append-only): carpeta [`database/migrations/`](database/migrations/). El esquema base se aplica con `database/BDD.sql` / `database/schema.sql`.
 
-Los buckets requeridos son privados:
-
-| Bucket | MIME permitidos | Límite | URL firmada |
-| --- | --- | ---: | ---: |
-| `property-images` | JPEG, PNG, WebP | 8 MiB | 3600 s |
-| `identity-documents` | PDF, JPEG, PNG | 10 MiB | 300 s |
-
-El bootstrap idempotente para el proyecto de prueba se ejecuta con:
-
-```bash
-npm run storage:bootstrap-test
-```
-
-No crea policies abiertas ni deja objetos temporales después de su verificación.
-
-## Seed municipal
-
-El seed es PostgreSQL e idempotente. Requiere `MUNICIPIO_PASSWORD` y no imprime contraseñas ni hashes.
+Seed solo municipio (alternativa al seed de `database/BDD.sql`):
 
 ```powershell
-$env:MUNICIPIO_EMAIL="admin@tu-dominio.ec"
 $env:MUNICIPIO_PASSWORD="una-contrasena-fuerte"
-$env:MUNICIPIO_NAME="Administrador Municipal"
-$env:MUNICIPIO_PHONE="0990000000"
-$env:MUNICIPIO_CEDULA="0000000000"
 npm run db:seed-municipio
 ```
 
-## Comandos útiles
+Guía ampliada: [`docs/despliegue.md`](docs/despliegue.md).
+
+---
+
+## 5. Despliegue en producción (IP pública)
+
+La rúbrica exige acceso por **IP pública o dominio**. Procedimiento resumido:
+
+1. Provisionar PostgreSQL + Storage en la nube.
+2. Aplicar `database/BDD.sql` (o `database/schema.sql` + seed).
+3. Desplegar la app Node en VPS/PaaS con las mismas variables de `.env.example` (valores de producción).
+4. Ejecutar:
 
 ```bash
-npm run dev                 # Desarrollo
-npm run build               # Compilación de producción
-npm run start               # Ejecutar producción
-npm run lint                # Linter
-npm test                    # Suite de pruebas
-npm run db:check-app        # Verifica PG_APP_* con rollback
-npm run db:seed-municipio   # Crea o actualiza el usuario municipal
+npm ci
+npm run build
+npm run start
 ```
 
-## Flujo de alquiler
+5. Exponer HTTPS/HTTP en IP pública o dominio y verificar desde un dispositivo externo.
 
-1. El arrendador registra y valida su identidad.
-2. El Municipio revisa la identidad y aprueba la propiedad.
-3. El arrendatario solicita un contrato.
-4. Arrendador y arrendatario completan las firmas.
-5. El Municipio aprueba o rechaza el contrato.
-6. Una aprobación activa el contrato y sincroniza la propiedad como ocupada.
-7. El flujo cubre incidencias, renovación y terminación/expiración contractual.
+Detalle, checklist y opciones de hosting: [`docs/despliegue.md`](docs/despliegue.md).
 
-## Estructura
+**URL / IP de producción del equipo:** _pendiente de completar al desplegar_.
+
+---
+
+## 6. Manual por rol
+
+Resumen; detalle completo en [`docs/manual-usuario.md`](docs/manual-usuario.md).
+
+| Rol | Puede |
+|-----|--------|
+| **Visitante** | Ver propiedades disponibles/aprobadas sin login |
+| **Arrendatario** | Filtrar, solicitar, contratos, PDF, terminar, renovar (15 días), quejas |
+| **Arrendador** | Publicar/editar/eliminar propiedades, solicitudes, contratos, quejas |
+| **Municipio** | Todo el sistema: listados, stats, aprobar, inhabilitar (creado en BD) |
+
+---
+
+## 7. Pruebas automatizadas y demo
+
+```bash
+# Suite completa Vitest
+npm test
+
+# KAN-61 — 12 escenarios de permisos/seguridad
+npx vitest run src/tests/security-permissions.test.ts
+
+# KAN-60 — E2E API happy path (requiere PG_TEST_*)
+npm run db:test-e2e-happy-path
+```
+
+Guion de demostración en vivo y fallos frecuentes: [`docs/pruebas-y-demo.md`](docs/pruebas-y-demo.md).
+
+---
+
+## 8. Estructura del repositorio
 
 ```text
-src/app/              Páginas y Route Handlers de Next.js
-src/components/       Componentes de interfaz
-src/lib/              Conexión PostgreSQL, autenticación y utilidades
-src/repositories/     Repositories PostgreSQL
-database/schema.sql   Esquema canónico PostgreSQL
-scripts/              Seeds, validaciones e integraciones
+src/app/                 Páginas y Route Handlers
+src/components/          UI por rol y módulos
+src/lib/                 Auth, validaciones, PDF, sync de estados
+src/repositories/        Acceso PostgreSQL
+src/tests/               Suites transversales (seguridad KAN-61)
+database/BDD.sql         Script oficial completo + seed (rúbrica)
+database/schema.sql      Bootstrap canónico sin seed
+database/migrations/     Migraciones append-only
+docs/                    Arquitectura, DER completo, manual, despliegue, pruebas
+scripts/                 Seeds, E2E e integraciones PostgreSQL
 ```
+
+---
+
+## 9. Documentación adicional
+
+| Documento | Contenido |
+|-----------|-----------|
+| [docs/arquitectura.md](docs/arquitectura.md) | Capas, despliegue, módulos |
+| [docs/modelo-datos.md](docs/modelo-datos.md) | DER Mermaid **completo** (14 tablas) y estados |
+| [docs/despliegue.md](docs/despliegue.md) | Local + producción / IP pública |
+| [docs/manual-usuario.md](docs/manual-usuario.md) | Manual por rol (6 módulos) |
+| [docs/pruebas-y-demo.md](docs/pruebas-y-demo.md) | Vitest, E2E, guion de demo |
+| [TESTING.md](TESTING.md) | Contexto histórico de la suite técnica |
+
+---
 
 ## Seguridad y colaboración
 
-- No compartas contraseñas, connection strings o service-role keys.
-- Ejecuta `npm test`, `npm run lint` y `npm run build` antes de publicar cambios.
-- Trabaja en una rama y abre Pull Requests; evita subir directamente a `main`.
+- Nunca subir `.env`, contraseñas ni service-role keys.
+- No exponer secretos con prefijo `NEXT_PUBLIC_`.
+- Antes de PR: `npm test`, `npm run lint`, `npm run build`.
+- Trabajo en ramas y Pull Requests; evitar push directo a `main`.
