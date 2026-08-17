@@ -9,17 +9,38 @@ const messageSchema = z.object({
   recipientId: z.string().min(1),
   content: z.string().trim().min(1, "Escribe un mensaje").max(2000),
 });
+const markReadSchema = z.object({ propertyId: z.string().min(1) });
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getActiveSession();
   if (!session) return NextResponse.json({ error: "Sesión requerida" }, { status: 401 });
 
   try {
+    if (new URL(request.url).searchParams.get("summary") === "unread") {
+      const unreadCount = await chatRepository.countUnreadForRecipient(session.sub);
+      return NextResponse.json({ unreadCount });
+    }
     const messages = await chatRepository.listForParticipant(session.sub);
     return NextResponse.json({ currentUserId: session.sub, messages });
   } catch (error) {
     console.error("chat list error", error);
     return NextResponse.json({ error: "No se pudo cargar el chat" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getActiveSession();
+  if (!session || session.role === "MUNICIPIO") return NextResponse.json({ error: "Solo usuarios registrados pueden usar el chat" }, { status: 401 });
+
+  const parsed = markReadSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Conversación inválida" }, { status: 400 });
+
+  try {
+    const marked = await chatRepository.markConversationRead(parsed.data.propertyId, session.sub);
+    return NextResponse.json({ marked });
+  } catch (error) {
+    console.error("chat mark read error", error);
+    return NextResponse.json({ error: "No se pudo actualizar el chat" }, { status: 500 });
   }
 }
 
