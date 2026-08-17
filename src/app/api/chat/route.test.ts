@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   findPropertyById: vi.fn(),
   conversationExists: vi.fn(),
   createMessage: vi.fn(),
+  countUnreadForRecipient: vi.fn(),
+  markConversationRead: vi.fn(),
 }));
 
 vi.mock("@/lib/server-auth", () => ({ getActiveSession: mocks.getActiveSession }));
@@ -17,16 +19,22 @@ vi.mock("@/repositories/chat.server", () => ({
     findPropertyById: mocks.findPropertyById,
     conversationExists: mocks.conversationExists,
     createMessage: mocks.createMessage,
+    countUnreadForRecipient: mocks.countUnreadForRecipient,
+    markConversationRead: mocks.markConversationRead,
   },
 }));
 
-import { GET, POST } from "@/app/api/chat/route";
+import { GET, PATCH, POST } from "@/app/api/chat/route";
 
 const tenant = { sub: "tenant-1", email: "tenant@example.test", fullName: "Tenant", role: "ARRENDATARIO" as const };
 const landlord = { sub: "landlord-1", email: "landlord@example.test", fullName: "Landlord", role: "ARRENDADOR" as const };
 
 function chatRequest(body: unknown) {
   return new Request("http://localhost/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+
+function markReadRequest(body: unknown) {
+  return new Request("http://localhost/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 }
 
 describe("Chat route migrated to PostgreSQL repository", () => {
@@ -40,14 +48,35 @@ describe("Chat route migrated to PostgreSQL repository", () => {
 
   it("exige sesión para listar y devuelve únicamente los mensajes del participante", async () => {
     mocks.getActiveSession.mockResolvedValueOnce(null);
-    expect((await GET()).status).toBe(401);
+    expect((await GET(new Request("http://localhost/api/chat"))).status).toBe(401);
 
     mocks.getActiveSession.mockResolvedValueOnce(tenant);
     mocks.listForParticipant.mockResolvedValueOnce([]);
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/chat"));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ currentUserId: "tenant-1", messages: [] });
     expect(mocks.listForParticipant).toHaveBeenCalledWith("tenant-1");
+  });
+
+  it("devuelve un conteo real de no leÃ­dos solo para el destinatario autenticado", async () => {
+    mocks.getActiveSession.mockResolvedValue(tenant);
+    mocks.countUnreadForRecipient.mockResolvedValue(2);
+    const response = await GET(new Request("http://localhost/api/chat?summary=unread"));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ unreadCount: 2 });
+    expect(mocks.countUnreadForRecipient).toHaveBeenCalledWith("tenant-1");
+  });
+
+  it("marca solo la conversaciÃ³n recibida por el usuario autenticado y rechaza usuarios ajenos", async () => {
+    mocks.getActiveSession.mockResolvedValue(tenant);
+    mocks.markConversationRead.mockResolvedValue(2);
+    const response = await PATCH(markReadRequest({ propertyId: "property-1" }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ marked: 2 });
+    expect(mocks.markConversationRead).toHaveBeenCalledWith("property-1", "tenant-1");
+
+    mocks.getActiveSession.mockResolvedValue(null);
+    expect((await PATCH(markReadRequest({ propertyId: "property-1" }))).status).toBe(401);
   });
 
   it("conserva la validación de payload vacío, destinatario propio y propiedad inexistente", async () => {

@@ -87,6 +87,29 @@ export class ChatRepository {
     }));
   }
 
+  async countUnreadForRecipient(recipientId: string): Promise<number> {
+    const result = await this.executor.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM public.chat_messages
+       WHERE "recipientId" = $1 AND "readAt" IS NULL`,
+      [recipientId],
+    );
+    return Number(result.rows[0]?.count ?? 0);
+  }
+
+  async markConversationRead(propertyId: string, recipientId: string): Promise<number> {
+    const result = await this.executor.query<{ id: string }>(
+      `UPDATE public.chat_messages
+       SET "readAt" = NOW()
+       WHERE "propertyId" = $1
+         AND "recipientId" = $2
+         AND "readAt" IS NULL
+       RETURNING id`,
+      [propertyId, recipientId],
+    );
+    return result.rows.length;
+  }
+
   async findPropertyById(propertyId: string): Promise<ChatProperty | null> {
     const result = await this.executor.query<ChatProperty>(
       "SELECT \"landlordId\", status FROM public.properties WHERE id = $1 LIMIT 1",

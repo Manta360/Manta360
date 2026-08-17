@@ -8,7 +8,7 @@ import { Alert, Button, Dialog, EmptyState, StatCard, StatusBadge } from "@/comp
 
 export type WorkspaceModule = "summary" | "messages" | "requests" | "contracts" | "incidents" | "renewals";
 type Props = { role: "ARRENDADOR" | "ARRENDATARIO"; module?: WorkspaceModule };
-type Chat = { id: string; propertyId: string; senderId: string; recipientId: string; content: string; createdAt: string; property?: { title: string; landlordId: string }; senderName: string; recipientName: string };
+type Chat = { id: string; propertyId: string; senderId: string; recipientId: string; content: string; createdAt: string; readAt?: string | null; property?: { title: string; landlordId: string }; senderName: string; recipientName: string };
 type Request = { id: string; status: string; message?: string; createdAt: string; properties: { id: string; title: string; address: string; monthlyRent: number; landlordId: string }; users: { fullName: string; email: string; phone?: string; nationalId?: string } };
 type Contract = { id: string; status: string; startDate: string; endDate: string; tenantSignedAt?: string; landlordSignedAt?: string; properties: { title: string; address: string }; users_contracts_tenantIdTousers: { fullName: string }; users_contracts_landlordIdTousers: { fullName: string } };
 type Report = { id: string; description: string; incidentDate: string; status: string; properties: { title: string; address: string }; users_incident_reports_tenantIdTousers: { fullName: string; email: string } };
@@ -31,6 +31,17 @@ export function RentalWorkspace({ role, module = "summary" }: Props) {
 
   const load = async () => { try { const [chatRes, requestRes, contractRes, reportRes] = await Promise.all([fetch("/api/chat"), fetch("/api/contract-requests"), fetch("/api/contracts"), fetch("/api/incident-reports")]); const [chatData, requestData, contractData, reportData] = await Promise.all([chatRes.json(), requestRes.json(), contractRes.json(), reportRes.json()]); if (!chatRes.ok) throw new Error(chatData.error); setChats(chatData.messages ?? []); setCurrentUserId(chatData.currentUserId ?? ""); setRequests(requestData.requests ?? []); setContracts(contractData.contracts ?? []); setReports(reportData.reports ?? []); } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo cargar este módulo"); } };
   useEffect(() => { void load(); const timer = window.setInterval(() => void load(), 15_000); return () => window.clearInterval(timer); }, []);
+  useEffect(() => {
+    if (module !== "messages" || !currentUserId) return;
+    const unreadPropertyIds = [...new Set(chats.filter((message) => message.recipientId === currentUserId && !message.readAt).map((message) => message.propertyId))];
+    if (unreadPropertyIds.length === 0) return;
+    void Promise.all(unreadPropertyIds.map(async (propertyId) => {
+      const response = await fetch("/api/chat", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyId }) });
+      return response.ok ? (await response.json()).marked ?? 0 : 0;
+    })).then((results) => {
+      if (results.some((marked) => marked > 0)) window.dispatchEvent(new Event("manta360:chat-read"));
+    });
+  }, [chats, currentUserId, module]);
   const decide = async (id: string, decision: "APROBADO" | "RECHAZADO") => { setBusy(id); const response = await fetch(`/api/contract-requests/${id}/decision`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision }) }); const data = await response.json(); setBusy(null); if (!response.ok) return setError(data.error ?? "No se pudo procesar la solicitud"); await load(); };
   const sign = async (id: string) => { setBusy(id); const response = await fetch(`/api/contracts/${id}/sign`, { method: "POST" }); const data = await response.json(); setBusy(null); if (!response.ok) return setError(data.error ?? "No se pudo confirmar la firma"); await load(); };
   const requestContract = async (propertyId: string) => { setBusy(propertyId); const response = await fetch("/api/contract-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ propertyId, message: "Solicito preparar el contrato luego de nuestra conversación." }) }); const data = await response.json(); setBusy(null); if (!response.ok) return setError(data.error ?? "No se pudo enviar la solicitud"); await load(); };

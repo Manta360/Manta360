@@ -50,4 +50,17 @@ describe("ChatRepository", () => {
     expect(executor.query).toHaveBeenNthCalledWith(2, expect.stringContaining('"propertyId" = $1'), ["property-1", "tenant-1", "landlord-1"]);
     expect(executor.query).toHaveBeenNthCalledWith(3, expect.stringContaining("VALUES ($1, $2, $3, $4, $5)"), ["message-2", "property-1", "tenant-1", "landlord-1", "Hola"]);
   });
+  it("cuenta y marca solo mensajes recibidos sin leer con consultas parametrizadas", async () => {
+    const executor = { query: vi.fn()
+      .mockResolvedValueOnce({ rows: [{ count: "2" }] })
+      .mockResolvedValueOnce({ rows: [{ id: "message-1" }, { id: "message-2" }] }),
+    } as unknown as SqlExecutor;
+    const repository = new ChatRepository(executor);
+
+    await expect(repository.countUnreadForRecipient("tenant-1")).resolves.toBe(2);
+    await expect(repository.markConversationRead("property-1", "tenant-1")).resolves.toBe(2);
+
+    expect(executor.query).toHaveBeenNthCalledWith(1, expect.stringContaining('"recipientId" = $1 AND "readAt" IS NULL'), ["tenant-1"]);
+    expect(executor.query).toHaveBeenNthCalledWith(2, expect.stringContaining('"recipientId" = $2'), ["property-1", "tenant-1"]);
+  });
 });
