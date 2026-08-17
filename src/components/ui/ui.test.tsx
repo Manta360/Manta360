@@ -25,4 +25,22 @@ describe("UI primitives", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cerrar diálogo" }));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps focus on the text field while typing even if onClose identity changes", () => {
+    const { rerender } = render(
+      <Dialog open onClose={() => undefined} title="Reportar">
+        <textarea aria-label="Descripción del problema" defaultValue="" />
+      </Dialog>,
+    );
+    const field = screen.getByLabelText("Descripción del problema");
+    field.focus();
+    expect(field).toHaveFocus();
+    fireEvent.change(field, { target: { value: "f" } });
+    rerender(
+      <Dialog open onClose={() => undefined} title="Reportar">
+        <textarea aria-label="Descripción del problema" defaultValue="f" />
+      </Dialog>,
+    );
+    expect(screen.getByLabelText("Descripción del problema")).toHaveFocus();
+  });
 });
