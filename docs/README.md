@@ -9,6 +9,7 @@
 | [despliegue.md](./despliegue.md) | Local + producción con IP pública |
 | [manual-usuario.md](./manual-usuario.md) | Manual por rol y 6 módulos |
 | [pruebas-y-demo.md](./pruebas-y-demo.md) | Vitest, E2E KAN-60/61 y guion de demo |
+| [../3-pager/](../3-pager/) | Informes técnicos individuales (3-Pager) |
 
 Script de base de datos: [`../database/BDD.sql`](../database/BDD.sql).  
 README maestro: [`../README.md`](../README.md).
