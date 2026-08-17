@@ -14,7 +14,7 @@ describe("MunicipalityWorkspace property preview", () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(response({ properties: [property], stats: { pendingProperties: 1, activeContracts: 0 } }))
       .mockResolvedValueOnce(response({ contracts: [] }))
-      .mockResolvedValueOnce(response({ landlords: [] }))
+      .mockResolvedValueOnce(response({ users: [], landlords: [] }))
       .mockResolvedValueOnce(response({ reports: [] }))
       .mockResolvedValueOnce(response({}))
       .mockResolvedValueOnce(response({ documents: [] }))

@@ -35,7 +35,7 @@ export const roleNavigation = (role: Role): NavigationItem[] => {
     { href: "/panel/municipio/propiedades", label: "Propiedades" },
     { href: "/panel/municipio/contratos", label: "Contratos" },
     { href: "/panel/municipio/documentos", label: "Documentos" },
-    { href: "/panel/municipio/arrendadores", label: "Arrendadores" },
+    { href: "/panel/municipio/usuarios", label: "Usuarios" },
     { href: "/panel/municipio/incidencias", label: "Incidencias" },
     { href: "/panel/municipio/estadisticas", label: "Estadísticas" },
   ];
