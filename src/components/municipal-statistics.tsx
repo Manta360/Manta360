@@ -39,7 +39,12 @@ export function MunicipalStatistics({ data, loading, error }: Props) {
   const weightedRent = data.averageRentByZone.reduce((total, item) => total + item.averageRent * (data.propertiesByZone.find((zone) => zone.zone === item.zone)?.count ?? 0), 0);
   const averageRent = totalProperties ? weightedRent / totalProperties : 0;
   const openIncidents = data.incidentsByStatus.PENDIENTE + data.incidentsByStatus.EN_PROCESO;
-  const incidents = Object.entries(data.incidentsByStatus).map(([name, value]) => ({ name: name === "EN_PROCESO" ? "En proceso" : `${name.slice(0, 1)}${name.slice(1).toLowerCase()}`, value, color: statusColors[name as keyof typeof statusColors] }));
+  const incidents = (["PENDIENTE", "EN_PROCESO", "RESUELTO"] as const).map((status) => ({
+    name: status === "EN_PROCESO" ? "En proceso" : `${status.slice(0, 1)}${status.slice(1).toLowerCase()}`,
+    value: data.incidentsByStatus[status],
+    color: statusColors[status],
+  }));
+  const hasIncidents = incidents.some((item) => item.value > 0);
   const maxLandlordProperties = Math.max(...data.topLandlords.map((landlord) => landlord.propertiesCount), 1);
 
   return <section className="space-y-5">
@@ -48,13 +53,43 @@ export function MunicipalStatistics({ data, loading, error }: Props) {
       <StatCard label="Propiedades" value={totalProperties} detail="Aprobadas y habilitadas" tone="blue" />
       <StatCard label="Renta promedio" value={currency.format(averageRent)} detail="Promedio ponderado" tone="sky" />
       <StatCard label="Incidencias abiertas" value={openIncidents} detail="Pendientes y en proceso" tone="orange" />
-      <StatCard label="Arrendadores" value={data.topLandlords.length} detail="Con actividad registrada" tone="blue" />
+      <StatCard label="Arrendadores" value={data.topLandlords.length} detail="Top según propiedades" tone="blue" />
     </div>
     <div className="grid gap-5 xl:grid-cols-2">
       <article className="app-card p-5"><h4 className="text-lg font-semibold text-navy">Propiedades por zona</h4><p className="mt-1 text-sm text-muted-foreground">Solo propiedades aprobadas y habilitadas.</p>{data.propertiesByZone.length ? <div className="mt-5 h-72" aria-label="Gráfico de propiedades por zona"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.propertiesByZone} margin={{ top: 8, right: 8, bottom: 8, left: -20 }}><XAxis dataKey="zone" tick={{ fontSize: 12 }} interval={0} /><YAxis allowDecimals={false} tick={{ fontSize: 12 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="count" fill="#1f6fa8" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div> : <EmptyState className="mt-4" title="Sin propiedades clasificadas" />}</article>
       <article className="app-card p-5"><h4 className="text-lg font-semibold text-navy">Renta promedio por zona</h4><p className="mt-1 text-sm text-muted-foreground">Canon mensual de las propiedades incluidas.</p>{data.averageRentByZone.length ? <div className="mt-5 h-72" aria-label="Gráfico de renta promedio por zona"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.averageRentByZone} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}><XAxis dataKey="zone" tick={{ fontSize: 12 }} interval={0} /><YAxis tickFormatter={(value) => `$${value}`} tick={{ fontSize: 12 }} width={54} /><Tooltip content={<ChartTooltip money />} /><Bar dataKey="averageRent" fill="#123b5d" radius={[6, 6, 0, 0]} /></BarChart></ResponsiveContainer></div> : <EmptyState className="mt-4" title="Sin rentas para promediar" />}</article>
-      <article className="app-card p-5"><h4 className="text-lg font-semibold text-navy">Incidencias por estado</h4>{incidents.some((item) => item.value > 0) ? <div className="mt-3 grid items-center gap-4 sm:grid-cols-2"><div className="h-56" aria-label="Gráfico de incidencias por estado"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={incidents} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={3}>{incidents.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div><div className="space-y-2">{incidents.map((item) => <div key={item.name} className="flex items-center justify-between rounded-lg bg-surface-subtle px-3 py-2"><span className="flex items-center gap-2 text-sm font-semibold text-navy"><i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</span><span className="font-bold text-navy">{item.value}</span></div>)}</div></div> : <EmptyState className="mt-4" title="No hay incidencias registradas." description="Pendiente 0 · En proceso 0 · Resuelto 0" />}</article>
-      <article className="app-card p-5"><h4 className="text-lg font-semibold text-navy">Top arrendadores</h4><p className="mt-1 text-sm text-muted-foreground">Ranking por propiedades registradas.</p><div className="mt-5 space-y-3">{data.topLandlords.length ? data.topLandlords.slice(0, 5).map((landlord, index) => <div key={landlord.id}><div className="flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-navy text-xs font-semibold text-white">{index + 1}</span><span className="truncate text-sm font-semibold text-navy">{landlord.fullName}</span><StatusBadge status={landlord.active ? "ACTIVO" : "INHABILITADO"} /></div><span className="shrink-0 text-sm font-semibold text-primary">{landlord.propertiesCount} prop.</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-subtle"><div className="h-full rounded-full bg-blue" style={{ width: `${(landlord.propertiesCount / maxLandlordProperties) * 100}%` }} /></div></div>) : <EmptyState title="No hay arrendadores registrados" />}</div></article>
+      <article className="app-card p-5">
+        <h4 className="text-lg font-semibold text-navy">Incidencias por estado</h4>
+        <div className="mt-3 grid items-center gap-4 sm:grid-cols-2">
+          {hasIncidents ? (
+            <div className="h-56" aria-label="Gráfico de incidencias por estado">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={incidents} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} paddingAngle={3}>
+                    {incidents.map((item) => <Cell key={item.name} fill={item.color} />)}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <EmptyState className="mt-1" title="No hay incidencias registradas." description="Pendiente 0 · En proceso 0 · Resuelto 0" />
+          )}
+          <div className="space-y-2" aria-label="Conteo de incidencias por estado">
+            {incidents.map((item) => (
+              <div key={item.name} className="flex items-center justify-between rounded-lg bg-surface-subtle px-3 py-2">
+                <span className="flex items-center gap-2 text-sm font-semibold text-navy">
+                  <i className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  {item.name}
+                </span>
+                <span className="font-bold text-navy">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </article>
+      <article className="app-card p-5"><h4 className="text-lg font-semibold text-navy">Top arrendadores</h4><p className="mt-1 text-sm text-muted-foreground">Ranking por propiedades registradas.</p><div className="mt-5 space-y-3">{data.topLandlords.length ? data.topLandlords.map((landlord, index) => <div key={landlord.id}><div className="flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-navy text-xs font-semibold text-white">{index + 1}</span><span className="truncate text-sm font-semibold text-navy">{landlord.fullName}</span><StatusBadge status={landlord.active ? "ACTIVO" : "INHABILITADO"} /></div><span className="shrink-0 text-sm font-semibold text-primary">{landlord.propertiesCount} prop.</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-subtle"><div className="h-full rounded-full bg-blue" style={{ width: `${(landlord.propertiesCount / maxLandlordProperties) * 100}%` }} /></div></div>) : <EmptyState title="No hay arrendadores registrados" />}</div></article>
     </div>
     <section className="app-panel border-sky/20 bg-surface p-5"><h4 className="font-semibold text-navy">Resumen de los datos</h4><ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">{municipalInsights(data).map((insight) => <li key={insight}>• {insight}</li>)}</ul></section>
   </section>;
