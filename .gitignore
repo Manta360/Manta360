@@ -44,3 +44,5 @@ next-env.d.ts
 
 # Copias locales de credenciales
 .env.*
+.vercel
+.env*

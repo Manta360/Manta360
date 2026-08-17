@@ -19,7 +19,7 @@ Plataforma web para la gestión de arriendos en **Manta, Ecuador**. Integra en u
 | **Tablero Jira (planeación)** | https://manta360.atlassian.net/jira/software/projects/KAN/summary |
 | **Script de BD (rúbrica)** | [`database/BDD.sql`](database/BDD.sql) |
 | **Documentación técnica** | [`docs/`](docs/) |
-| **URL / IP de producción** | _Completar por el equipo al desplegar_ |
+| **URL / IP de producción** | https://manta360.vercel.app |
 
 ---
 
@@ -169,7 +169,7 @@ npm run start
 
 Detalle, checklist y opciones de hosting: [`docs/despliegue.md`](docs/despliegue.md).
 
-**URL / IP de producción del equipo:** _pendiente de completar al desplegar_.
+**URL / IP de producción del equipo:** https://manta360.vercel.app
 
 ---
 
