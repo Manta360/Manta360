@@ -27,6 +27,7 @@ describe("KAN-46 - terminacion y expiracion contractual PostgreSQL", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ finalized: true });
     expect(pg.query).toHaveBeenCalledWith(expect.stringContaining("endedBy"), expect.arrayContaining(["contract-1", expect.any(Date), "tenant-1"]));
+    expect(pg.query).toHaveBeenCalledWith(expect.stringContaining("UPDATE public.properties"), expect.arrayContaining(["property-1", "DISPONIBLE", expect.any(Date)]));
   });
 
   it("rechaza una parte ajena sin escribir", async () => {
