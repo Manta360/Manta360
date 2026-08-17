@@ -229,7 +229,7 @@ scripts/                 Seeds, E2E e integraciones PostgreSQL
 | [docs/despliegue.md](docs/despliegue.md) | Local + producción / IP pública |
 | [docs/manual-usuario.md](docs/manual-usuario.md) | Manual por rol (6 módulos) |
 | [docs/pruebas-y-demo.md](docs/pruebas-y-demo.md) | Vitest, E2E, guion de demo |
-| [TESTING.md](TESTING.md) | Contexto histórico de la suite técnica |
+| [TESTING.md](TESTING.md) | Suite de pruebas (KAN-28/60/61) |
 
 ---
 
