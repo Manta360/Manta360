@@ -104,6 +104,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .app-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
 .app-card:hover { box-shadow: var(--shadow-md); }
 .app-panel { border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-sm); }
+.landing-primary, .landing-primary:visited { background: var(--primary); color: #fff !important; }
+.landing-primary:hover, .landing-primary:focus-visible, .landing-primary:active { background: var(--navy); color: #fff !important; }
+.landing-primary:disabled, .landing-primary[aria-disabled="true"] { background: var(--primary); color: #fff !important; opacity: 0.6; }
 .skeleton { animation: manta-pulse 1.4s ease-in-out infinite; background: linear-gradient(90deg, #e8eef4 25%, #f6f8fb 45%, #e8eef4 65%); background-size: 200% 100%; }
 @keyframes manta-pulse { to { background-position: -200% 0; } }
 
