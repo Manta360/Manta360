@@ -23,7 +23,7 @@ export async function SiteHeader() {
           ) : (
             <>
               <Link href="/login" className="hidden sm:inline transition hover:text-blue">Iniciar sesión</Link>
-              <Link href="/registro" className="rounded-md bg-primary px-4 py-2.5 text-white shadow-sm transition hover:bg-navy">Crear cuenta</Link>
+              <Link href="/registro" className="rounded-md bg-primary px-4 py-2.5 text-white shadow-sm transition hover:bg-navy focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky/25">Crear cuenta</Link>
             </>
           )}
         </nav>
